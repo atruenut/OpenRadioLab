@@ -176,6 +176,8 @@ and muting records silence.
 Bandwidths are fixed (2.7 kHz for SSB, 400 Hz for CW). Both have an automatic gain control so weak and strong stations sound similar.
 HF still needs a dongle with HF capability (direct sampling or an upconverter).
 
+**Fine tuning.** The Step list now has 100 Hz, 500 Hz, 1 kHz, 5 kHz and 25 kHz steps. Small steps move the listening frequency inside the current view without retuning the dongle, so they are quick for nudging SSB voices into tune.
+
 **Antenna Workshop** (Tools menu). Type a frequency or pick a band: it shows the wavelength and the lengths to cut for a whip, a dipole and ground-plane radials,
 plus seven short build guides (dipole, V for weather satellites, ground plane, long wire for HF, safety).
 

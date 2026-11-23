@@ -67,8 +67,8 @@ const Preset kPresets[] = {
     {"Aircraft transponders (1090 MHz)", 1090.0e6},
     {"AM broadcast (1.0 MHz) - needs HF capability", 1.0e6},
 };
-const double kSteps[] = {100e3, 200e3, 500e3, 1e6, 2e6, 10e6};
-const char* kStepNames[] = {"100 kHz", "200 kHz", "500 kHz", "1 MHz", "2 MHz", "10 MHz"};
+const double kSteps[] = {100e3, 200e3, 500e3, 1e6, 2e6, 10e6, 100.0, 500.0, 1e3, 5e3, 25e3};   // the small ones are for sideband and Morse
+const char* kStepNames[] = {"100 kHz", "200 kHz", "500 kHz", "1 MHz", "2 MHz", "10 MHz", "100 Hz (fine)", "500 Hz (fine)", "1 kHz", "5 kHz", "25 kHz"};
 const int kFftSizes[] = {512, 1024, 2048, 4096, 8192, 16384};
 const WindowType kWindows[] = {WindowType::Hann, WindowType::Hamming, WindowType::BlackmanHarris, WindowType::Rectangular};
 const char* kModeNames[] = {"WFM - wide FM (broadcast music/talk)", "NFM - narrow FM (two-way voice)", "AM - amplitude (aircraft, AM radio)",
@@ -180,7 +180,7 @@ void loadSettings() {
     A.cfg.autoGain = geti("autogain", 1) != 0;
     A.cfg.fftIdx = clampi(geti("fft", 2), 0, 5);
     A.cfg.windowIdx = clampi(geti("window", 0), 0, 3);
-    A.cfg.stepIdx = clampi(geti("step", 3), 0, 5);
+    A.cfg.stepIdx = clampi(geti("step", 3), 0, 10);
     A.cfg.advanced = geti("advanced", 0) != 0;
     A.cfg.smoothPct = clampi(geti("smooth", 60), 0, 90);
     A.cfg.rangeDb = clampi(geti("range", 60), 30, 100);
@@ -1318,8 +1318,8 @@ void onCommand(int id, int code) {
             else { A.notice = std::string("Could not understand \"") + buf + "\" as a frequency. Try 100.5, 145 MHz or 433920 kHz."; updateInfo(); }
             break;
         }
-        case ID_DOWN: tuneTo(A.cfg.vfoHz - kSteps[A.cfg.stepIdx]); break;
-        case ID_UP:   tuneTo(A.cfg.vfoHz + kSteps[A.cfg.stepIdx]); break;
+        case ID_DOWN: if (kSteps[A.cfg.stepIdx] < 100e3) listenTo(A.cfg.vfoHz - kSteps[A.cfg.stepIdx]); else tuneTo(A.cfg.vfoHz - kSteps[A.cfg.stepIdx]); break;
+        case ID_UP:   if (kSteps[A.cfg.stepIdx] < 100e3) listenTo(A.cfg.vfoHz + kSteps[A.cfg.stepIdx]); else tuneTo(A.cfg.vfoHz + kSteps[A.cfg.stepIdx]); break;
         case ID_SCAN: startScan(); break;
         case ID_STATIONS:
             if (code == CBN_SELCHANGE) {
