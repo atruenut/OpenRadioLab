@@ -24,7 +24,7 @@
 
 ## 2b. Listening (new)
 
-1. Pick **Listen as**: WFM for broadcast FM, NFM for voice/weather, AM for aircraft and AM radio.
+1. Pick **Listen as**: WFM for broadcast FM, NFM for two-way voice, AM for aircraft and AM radio.
    In Beginner mode the mode follows the band automatically; in Advanced mode it is yours to choose,
    so you can try the wrong mode on purpose and hear what that does.
 2. **Double-click** any signal on the graphs to listen to it. The red marker and strip show the frequency
@@ -153,3 +153,17 @@ reports the strongest, average and weakest level, the background, how much of th
 steady carrier, comes-and-goes, or empty. *Save as CSV* opens in any spreadsheet. The plot restarts when you change
 frequency. Note: a perfectly steady signal and an empty channel look alike in the level alone, so Signal Lab says so
 instead of guessing; compare with the noise floor on the spectrum.
+
+## Frequency Atlas, Save audio (0.9.0)
+
+**Tools -> Frequency Atlas** lists well-known bands sorted by frequency, with a search box. Each entry says what the band is,
+what mode it is usually listened to in, and **where that information comes from**. Many have a **Tune** button that jumps
+to a good example. It is a plain-language *summary*, not the official table: the authority is the Canadian Table of
+Frequency Allocations (ISED). The weather entry records that **Weatheradio Canada was permanently shut down on 16 March
+2026** (Environment and Climate Change Canada notice), so an empty 162 MHz channel is now normal in Canada.
+Private services (cell phones, police and fire, business radio) are deliberately not described. The same table drives the
+"which mode fits" suggestions and the click-a-signal hints.
+
+**Save audio** (button next to Stereo, or File menu) saves what you hear as a normal 16-bit stereo 48 kHz WAV file, up to
+1 GB. Unlike **Record**, which saves the raw radio for replay in this app, a WAV plays anywhere. It keeps going while you retune,
+and muting records silence.

@@ -22,12 +22,14 @@
 #include "audio/AudioOutput.h"
 #include "dsp/BandScanner.h"
 #include "io/IqFile.h"
+#include "io/WavWriter.h"
 #include "dsp/Demodulator.h"
 #include "dsp/DspPipeline.h"
 #include "dsp/SpectrumProcessor.h"
 #include "sdr/DeviceDetect.h"
 #include "sdr/RTLSDRDevice.h"
 #include "sdr/SimulatedSDR.h"
+#include "ui/AtlasWindow.h"
 #include "ui/LabWindows.h"
 #include "ui/LearnWindow.h"
 #include "ui/SpectrumView.h"
@@ -36,18 +38,18 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.8.0";
+const char* kAppName = "OpenRadio Lab 0.9.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
 enum {
     ID_DEVICE = 100, ID_RESCAN, ID_REPORT, ID_MODE, ID_PAUSE, ID_HELP, ID_LEARN, ID_REC, ID_OPENREC, ID_PB_PLAY, ID_PB_SEEK, ID_PB_TIME, ID_PB_LOOP, ID_PB_LIVE,
     ID_FREQ, ID_GO, ID_DOWN, ID_UP, ID_STEP, ID_PRESET, ID_SCAN, ID_STATIONS,
-    ID_LISTEN, ID_VOL, ID_MUTE, ID_STEREO, ID_BW, ID_SQL,
+    ID_LISTEN, ID_VOL, ID_MUTE, ID_STEREO, ID_WAV, ID_BW, ID_SQL,
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -59,7 +61,7 @@ const Preset kPresets[] = {
     {"FM broadcast (98.0 MHz)", 98.0e6},
     {"Airband - aircraft voice (123.0 MHz)", 123.0e6},
     {"2 m amateur radio (145.0 MHz)", 145.0e6},
-    {"Weather radio (162.475 MHz)", 162.475e6},
+    {"VHF weather band (162.475 MHz; Weatheradio Canada ended 2026)", 162.475e6},
     {"Remote controls / ISM (433.92 MHz)", 433.92e6},
     {"Aircraft transponders (1090 MHz)", 1090.0e6},
     {"AM broadcast (1.0 MHz) - needs HF capability", 1.0e6},
@@ -68,7 +70,7 @@ const double kSteps[] = {100e3, 200e3, 500e3, 1e6, 2e6, 10e6};
 const char* kStepNames[] = {"100 kHz", "200 kHz", "500 kHz", "1 MHz", "2 MHz", "10 MHz"};
 const int kFftSizes[] = {512, 1024, 2048, 4096, 8192, 16384};
 const WindowType kWindows[] = {WindowType::Hann, WindowType::Hamming, WindowType::BlackmanHarris, WindowType::Rectangular};
-const char* kModeNames[] = {"WFM - wide FM (broadcast music/talk)", "NFM - narrow FM (voice, weather)", "AM - amplitude (aircraft, AM radio)"};
+const char* kModeNames[] = {"WFM - wide FM (broadcast music/talk)", "NFM - narrow FM (two-way voice)", "AM - amplitude (aircraft, AM radio)"};
 const char* kModeShort[] = {"WFM", "NFM", "AM"};
 
 struct DevEntry { bool sim; int rtlIndex; std::string label; std::string path; };
@@ -126,6 +128,8 @@ struct App {
     std::string filePath;          // the recording offered in the device list
     std::string lastRec;           // the most recent recording saved or opened (for the journal)
     bool recWas = false;
+    WavWriter wav;                 // "Save audio": what you hear, as a WAV file
+    bool wavWas = false;
 
     // FM band scan
     BandScanner scan;
@@ -139,6 +143,7 @@ struct App {
 
 std::string fmt1(double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); return b; }
 void stopRecording(bool ask = false);
+void stopAudioCapture(bool ask = false);
 void layout();
 void updatePlaybackBar(bool force = false);
 IqFileDevice* player();
@@ -375,6 +380,14 @@ void applyDsp() {
 
 std::string megabytes(uint64_t b) { char t[32]; std::snprintf(t, sizeof t, "%.1f MB", b / 1048576.0); return t; }
 
+void offerShowInFolder(const std::string& headline, const std::string& path, const std::string& detail) {
+    const std::string msg = headline + "\n\n" + path + "\n\n" + detail + "\n\nShow it in its folder?";
+    if (MessageBoxA(A.hwnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+        const std::string arg = "/select,\"" + path + "\"";
+        ShellExecuteA(A.hwnd, "open", "explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
+    }
+}
+
 void stopRecording(bool ask) {
     if (!A.rec.active() && !A.recWas) return;
     const uint64_t bytes = A.rec.bytes();
@@ -386,14 +399,21 @@ void stopRecording(bool ask) {
     SetWindowTextA(GetDlgItem(A.hwnd, ID_REC), "Record");
     A.notice = "Recording saved (" + megabytes(bytes) + ", " + fmt1(bytes / 2.0 / std::max<uint32_t>(1, A.cfg.rate)) + " s" +
                (limit ? ", size limit reached" : "") + "): " + path + "  -  press 'Open recording...' to play it back, or share the file.";
-    if (ask && bytes > 0) {
-        const std::string msg = "Recording saved:\n\n" + path + "\n\n" + megabytes(bytes) + ", about " +
-                                fmt1(bytes / 2.0 / std::max<uint32_t>(1, A.cfg.rate)) + " seconds of radio.\n\nShow it in its folder?";
-        if (MessageBoxA(A.hwnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
-            const std::string arg = "/select,\"" + path + "\"";
-            ShellExecuteA(A.hwnd, "open", "explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
-        }
-    }
+    if (ask && bytes > 0)
+        offerShowInFolder("Recording saved:", path, megabytes(bytes) + ", about " + fmt1(bytes / 2.0 / std::max<uint32_t>(1, A.cfg.rate)) + " seconds of radio.");
+}
+
+void stopAudioCapture(bool ask) {
+    if (!A.wav.active() && !A.wavWas) return;
+    const double secs = A.wav.seconds();
+    const bool limit = A.wav.hitLimit();
+    const std::string path = A.wav.path();
+    A.wav.stop();
+    A.wavWas = false;
+    SetWindowTextA(GetDlgItem(A.hwnd, ID_WAV), "Save audio");
+    CheckMenuItem(GetMenu(A.hwnd), ID_M_WAV, MF_BYCOMMAND | MF_UNCHECKED);
+    A.notice = "Audio saved (" + fmt1(secs) + " s" + (limit ? ", size limit reached" : "") + "): " + path;
+    if (ask && secs > 0) offerShowInFolder("Audio saved:", path, fmt1(secs) + " seconds. It is a normal WAV file that any media player can open.");
 }
 
 void stopDevice() {
@@ -791,7 +811,8 @@ void layout() {
     place(ID_L_VOL, x, y + S(4), S(52), rowH); x += S(54);
     place(ID_VOL, x, y, S(120), rowH); x += S(120) + gap;
     place(ID_MUTE, x, y, S(64), rowH); x += S(64);
-    place(ID_STEREO, x, y, S(70), rowH); x += S(70) + gap * 2;
+    place(ID_STEREO, x, y, S(70), rowH); x += S(70);
+    place(ID_WAV, x, y, S(96), rowH); x += S(96) + gap * 2;
     const int advListen[] = {ID_L_BW, ID_BW, ID_L_BWV, ID_L_SQL, ID_SQL, ID_L_SQLV};
     for (int id : advListen) show(id, adv);
     if (adv) {
@@ -880,6 +901,7 @@ void updateStatus() {
     SendMessageA(sb, SB_SETTEXTA, 2, (LPARAM)b);
     {
         std::string rec = A.rec.active() ? "REC " + megabytes(A.rec.bytes()) + " | " : "";
+        if (A.wav.active()) { char wt[24]; const int ws = (int)A.wav.seconds(); std::snprintf(wt, sizeof wt, "WAV %d:%02d | ", ws / 60, ws % 60); rec += wt; }
         std::snprintf(b, sizeof b, "%sSignal %.0f dBFS%s | audio %s", rec.c_str(), A.dm.levelDb(), A.dm.squelchOpen() ? "" : " (squelched)",
                       A.audio.isOpen() ? (A.cfg.mute ? "muted" : "on") : "OFF");
     }
@@ -894,6 +916,7 @@ void onTimer() {
     A.view.addFrames(fr);
     if (A.scanning) scanFeed(fr);
     if (A.recWas && !A.rec.active()) { stopRecording(true); updateInfo(); }
+    if (A.wavWas && !A.wav.active()) { stopAudioCapture(true); updateInfo(); }
     updatePlaybackBar();
     if (signalLabOpen()) {
         static ULONGLONG lastLab = 0;
@@ -979,6 +1002,7 @@ void createControls() {
     mk(TRACKBAR_CLASSA, "", TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, ID_VOL);
     mk("BUTTON", "Mute", BS_AUTOCHECKBOX | WS_TABSTOP, ID_MUTE);
     mk("BUTTON", "Stereo", BS_AUTOCHECKBOX | WS_TABSTOP, ID_STEREO);
+    mk("BUTTON", "Save audio", BS_PUSHBUTTON | WS_TABSTOP, ID_WAV);
     mk("STATIC", "Bandwidth:", 0, ID_L_BW);
     mk(TRACKBAR_CLASSA, "", TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, ID_BW);
     mk("STATIC", "", 0, ID_L_BWV);
@@ -1129,6 +1153,41 @@ void openJournal(bool newEntry) {
 
 void openSignalLab() { showSignalLab(A.hwnd, A.hi, A.font, [] { openJournal(true); }); }
 
+void toggleAudioCapture() {
+    if (A.wav.active()) { stopAudioCapture(true); updateInfo(); return; }
+    if (!A.audio.isOpen()) { A.notice = "There is no audio output to save from."; updateInfo(); return; }
+    std::string dir = A.cfg.recDir;
+    if (dir.empty() || GetFileAttributesA(dir.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        char docs[MAX_PATH] = {0};
+        dir = SHGetFolderPathA(nullptr, CSIDL_PERSONAL, nullptr, 0, docs) == S_OK ? std::string(docs) + "\\OpenRadioLab" : ".";
+        CreateDirectoryA(dir.c_str(), nullptr);
+        dir += "\\Recordings";
+        CreateDirectoryA(dir.c_str(), nullptr);
+    }
+    SYSTEMTIME t; GetLocalTime(&t);
+    char file[MAX_PATH];
+    std::snprintf(file, sizeof file, "audio_%.3fMHz_%04d-%02d-%02d_%02d%02d%02d", A.cfg.vfoHz / 1e6, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof ofn; ofn.hwndOwner = A.hwnd;
+    ofn.lpstrFilter = "WAV audio (*.wav)\0*.wav\0";
+    ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.lpstrInitialDir = dir.c_str(); ofn.lpstrDefExt = "wav";
+    ofn.lpstrTitle = "Save what you hear as an audio file...";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameA(&ofn)) return;
+    {
+        const std::string chosen = file;
+        const size_t slash = chosen.find_last_of("\\/");
+        if (slash != std::string::npos) A.cfg.recDir = chosen.substr(0, slash);
+    }
+    std::string err;
+    if (!A.wav.start(file, (uint32_t)Demodulator::kAudioRate, 1ull << 30, err)) { A.notice = err; updateInfo(); return; }
+    A.wavWas = true;
+    SetWindowTextA(H(ID_WAV), "Stop audio");
+    CheckMenuItem(GetMenu(A.hwnd), ID_M_WAV, MF_BYCOMMAND | MF_CHECKED);
+    A.notice = "Saving the audio you hear to " + A.wav.path() + ". It keeps going while you retune. Press Stop audio when you are done (muting records silence).";
+    updateInfo();
+}
+
 void toggleRecording() {
     if (A.rec.active()) { stopRecording(true); updateInfo(); return; }
     if (!A.dev) return;
@@ -1205,10 +1264,12 @@ void onCommand(int id, int code) {
         case ID_HELP: showHelp(); break;
         case ID_LEARN: showLearnWindow(A.hwnd, A.hi, A.font); break;
         case ID_REC: toggleRecording(); break;
+        case ID_WAV: case ID_M_WAV: toggleAudioCapture(); break;
         case ID_PB_LIVE: case ID_M_LIVE: backToLive(); break;
         case ID_M_JOURNAL: openJournal(false); break;
         case ID_M_NEWENTRY: openJournal(true); break;
         case ID_M_LAB: openSignalLab(); break;
+        case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
         case ID_M_EXIT: SendMessageA(A.hwnd, WM_CLOSE, 0, 0); break;
         case ID_PB_PLAY: playbackPlayPause(); break;
         case ID_PB_LOOP:
@@ -1355,6 +1416,7 @@ LRESULT CALLBACK mainProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_DESTROY:
             KillTimer(h, TIMER_UI);
+            stopAudioCapture(false);
             saveSettings();
             stopDevice();          // device first, so nothing is still feeding the DSP thread
             A.pipe.stop();
@@ -1374,6 +1436,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     SpectrumView::registerClass(hi);
     registerLearnClass(hi);
     registerLabClasses(hi);
+    registerAtlasClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1396,12 +1459,14 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     HDC dc = GetDC(nullptr); A.dpi = GetDeviceCaps(dc, LOGPIXELSX); ReleaseDC(nullptr, dc);
     HMENU menu = CreateMenu(), file = CreatePopupMenu(), tools = CreatePopupMenu(), help = CreatePopupMenu();
     AppendMenuA(file, MF_STRING, ID_OPENREC, "Open a recording...");
+    AppendMenuA(file, MF_STRING, ID_M_WAV, "Save what I hear as audio (WAV)...");
     AppendMenuA(file, MF_STRING, ID_M_LIVE, "Back to live radio");
     AppendMenuA(file, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(file, MF_STRING, ID_M_EXIT, "Exit");
     AppendMenuA(tools, MF_STRING, ID_M_JOURNAL, "Experiment Journal...");
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
     AppendMenuA(tools, MF_STRING, ID_M_LAB, "Signal Lab: watch a signal over time...");
+    AppendMenuA(tools, MF_STRING, ID_M_ATLAS, "Frequency Atlas: what is where...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_REPORT, "Device report...");
     AppendMenuA(help, MF_STRING, ID_HELP, "Getting-started manual");
@@ -1417,7 +1482,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
 
     // Audio and the DSP thread come up before the first device so no samples are ever lost.
     openAudio();
-    A.pipe.setAudioSink([](const float* a, size_t n, int ch) { A.audio.write(a, n, ch); });
+    A.pipe.setAudioSink([](const float* a, size_t n, int ch) { A.audio.write(a, n, ch); if (A.wav.active()) A.wav.write(a, n, ch); });
     A.pipe.setAudioEnabled(true);
     A.pipe.start();
 

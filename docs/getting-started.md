@@ -110,7 +110,7 @@ the second place once and every future version will find them, so you never have
 | **Sample rate (MS/s)** | Millions of samples per second; also how wide a slice of spectrum you see. |
 | **dBFS** | Signal level where 0 is the strongest the receiver can represent. Weaker is more negative. |
 | **Noise floor** | The ragged baseline of background noise. Signals must rise above it. |
-| **WFM / NFM / AM** | Ways of carrying sound: wide FM (music stations), narrow FM (voice, weather), amplitude (aircraft, AM radio). |
+| **WFM / NFM / AM** | Ways of carrying sound: wide FM (music stations), narrow FM (two-way voice), amplitude (aircraft, AM radio). |
 | **Squelch** | Mutes the audio when the signal is below a level, so you do not hear hiss. |
 
 ## 5. Tips for good reception

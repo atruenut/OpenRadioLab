@@ -44,7 +44,7 @@ inline std::string signalHint(double hz, double widthHz, double activity) {
     }
     if (b && b->mode == 1 && voice) {
         s += "it is in the " + std::string(b->name) + " with a voice-sized width";
-        if (steady && hz >= 162.4e6 && hz <= 162.55e6) s += " and it is continuous, which fits an automated weather broadcast";
+        if (steady && hz >= 162.4e6 && hz <= 162.55e6) s += " and it is continuous, which fits an automated weather broadcast (note: Weatheradio Canada closed in March 2026, so a US NOAA station or something else is more likely)";
         else if (bursty) s += " and it comes and goes, which fits push-to-talk radio";
         s += ". These are usually narrowband FM, so try NFM.";
         return s;

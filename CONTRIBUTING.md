@@ -37,7 +37,7 @@ Wine does not run the GUI reliably, so GUI, audio and hardware paths can only be
 
 **Add a demodulator mode.** Add to `Demodulator::Mode` and its `process()`, extend the mode tables in `main.cpp` (`kModeShort`, the "Listen as" combo) and `Bands.h` (band default mode), and write a test that modulates a known tone and checks the decoded tone (see `tests/test_demod.cpp` and `tests/test_stereo.cpp`).
 
-**Improve the band table.** `src/Bands.h` is deliberately simplified. If you replace it with official ISED allocation data, cite the source and date in the file and in `docs/THIRD-PARTY.md`.
+**Improve the Atlas.** `src/Bands.h` is a curated summary and every entry has a `source` field. Check entries against the official CTFA, fix mistakes, add bands. Say where facts come from, keep text plain ASCII, and do not describe private services (cell, police, business radio). `tests/test_hints.cpp` checks the table.
 
 ## Pull requests
 

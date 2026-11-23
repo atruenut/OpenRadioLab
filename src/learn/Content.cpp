@@ -11,7 +11,7 @@ static const Lesson kLessons[] = {
 { "1. What is radio, really?",
 "Radio is invisible energy that travels through the air as a wave, like ripples on a pond. A transmitter shakes electricity back and forth very fast in a metal rod (an antenna) and that sends ripples out. Your antenna catches a tiny bit of them.\n"
 "FREQUENCY is how many ripples pass per second. It is measured in hertz (Hz). 1 kHz is a thousand per second, 1 MHz (megahertz) is a million per second, 1 GHz is a billion. An FM station called '98.1' is shaking at 98.1 million times per second.\n"
-"Every kind of radio lives at its own frequencies, like houses on a street: FM music at 88-108 MHz, aircraft voice at 118-137 MHz, weather radio around 162 MHz. Radios do not mix them up because each one only listens at one address at a time.\n"
+"Every kind of radio lives at its own frequencies, like houses on a street: FM music at 88-108 MHz, aircraft voice at 118-137 MHz, boats and the VHF weather channels around 156-162 MHz. Radios do not mix them up because each one only listens at one address at a time.\n"
 "WAVELENGTH is the distance between ripples. Higher frequency = shorter wavelength. At 98 MHz one wave is about 3 metres long. This matters for antennas (lesson 4).\n"
 "A Software Defined Radio (SDR) like your dongle does not tune one station. It grabs a whole slice of the radio world at once, about 2 MHz wide, and the computer sorts it out. That is why you can SEE many stations at the same time.",
 0, 0, "" },
@@ -30,7 +30,8 @@ static const Lesson kLessons[] = {
 "You can also type a frequency like 98.1 and press Enter. A bare number means MHz.\n"
 "Why does FM sound good? Broadcast FM is WIDE: each station uses about 200 kHz of space, which is why the bumps on the graph are fat. That width is what carries music in good quality. Stations are spaced 200 kHz apart in Canada and the US, always on odd tenths (88.1, 88.3, 88.5 ...). If you see a peak on a .0 or .2 it is probably not a normal FM station.\n"
 "Only noise between stations is NORMAL: it is the receiver turning up the volume on nothing. Go back to a station and the hiss should vanish.\n"
-"If the scan finds nothing, read lessons 4 and 5. The antenna is the usual reason.",
+"If the scan finds nothing, read lessons 4 and 5. The antenna is the usual reason.\n"
+"Curious what else is out there? Tools -> Frequency Atlas lists well-known bands (FM, airband, marine, amateur and more) with a plain-language note on each and a button to jump to an example. Tools -> File -> Save what I hear as audio saves a station as a normal sound file.",
 98.1e6, 0, "Go to the FM band (98.1 MHz)" },
 
 { "4. Antennas for beginners",
@@ -39,7 +40,7 @@ static const Lesson kLessons[] = {
 "  FM broadcast, 98 MHz:   about 77 cm\n"
 "  Aircraft, 123 MHz:       about 61 cm\n"
 "  Amateur 2 m, 145 MHz:    about 52 cm\n"
-"  Weather radio, 162.5 MHz: about 46 cm\n"
+"  VHF marine/weather, 162.5 MHz: about 46 cm\n"
 "  Remote controls, 433 MHz: about 17 cm\n"
 "So a telescopic antenna pulled out to about 75 cm is nearly right for FM, and a paperclip is far too short, which is why it only catches the strongest stations. Still, it proves the idea: more metal in the right shape means more signal.\n"
 "Easy upgrades, cheapest first: (1) straighten a paperclip or a 75 cm piece of wire and connect it to the antenna centre pin; (2) a telescopic antenna; (3) move it near a window, or higher up; (4) keep it away from computers, chargers and the USB cable itself, which make their own radio noise; (5) a USB extension cable so the dongle can sit by the window.\n"
@@ -57,7 +58,7 @@ static const Lesson kLessons[] = {
 { "6. AM, FM and why modes matter",
 "The signal is just a wave. To get sound out of it you need to know how the sound was put in, called the MODE.\n"
 "AM (amplitude modulation) puts sound in the wave's strength. Used by AM radio (530-1710 kHz) and aircraft voice (118-137 MHz).\n"
-"FM (frequency modulation) puts sound in tiny changes of the wave's frequency. WFM (wide FM) is broadcast music. NFM (narrow FM) is the same idea but skinnier, used for two-way voice, weather radio and amateur radio.\n"
+"FM (frequency modulation) puts sound in tiny changes of the wave's frequency. WFM (wide FM) is broadcast music. NFM (narrow FM) is the same idea but skinnier, used for two-way voice, boats and amateur radio.\n"
 "Try it: go to a station and change 'Listen as' to the wrong mode. Wide FM played as AM is faint and buzzy. Voice played as the wrong width sounds thin or distorted. Beginner mode picks the usual mode for each band; Advanced mode leaves it to you.\n"
 "Also try the Bandwidth slider in Advanced mode on NFM. Too narrow muffles the voice, too wide lets in hiss and neighbours.",
 123.0e6, 2, "Go to the airband (123.0 MHz, AM)" },
@@ -85,8 +86,8 @@ static const Lesson kLessons[] = {
 0, 0, "" },
 
 { "10. Listening responsibly (Canada)",
-"Listening to broadcast radio (AM, FM, weather radio, aircraft, amateur radio) is a normal, well-loved hobby and this program is receive-only.\n"
-"In Canada, radio is regulated by Innovation, Science and Economic Development Canada (ISED). The general idea in the rules is that radio meant for the public (broadcast, weather, aviation safety information) is fine to listen to, while private communications (telephone calls, private messages) should not be listened to, written down, used or passed on. Do not decode or act on anything private you happen to hear.\n"
+"Listening to broadcast radio (AM, FM, aircraft, marine and amateur radio) is a normal, well-loved hobby and this program is receive-only.\n"
+"In Canada, radio is regulated by Innovation, Science and Economic Development Canada (ISED). The general idea in the rules is that radio meant for the public (broadcast, aviation and marine information) is fine to listen to, while private communications (telephone calls, private messages) should not be listened to, written down, used or passed on. Do not decode or act on anything private you happen to hear.\n"
 "This is general information and not legal advice. If you are unsure, check the ISED rules for your situation.\n"
 "Courtesy: never use what you hear to harm, track or bother people. Never interfere with aircraft or emergency radio. This program cannot transmit, and it will stay that way.",
 0, 0, "" },

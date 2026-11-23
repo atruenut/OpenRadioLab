@@ -30,7 +30,7 @@ build/app_res.o: resources/app.rc resources/app.manifest
 	cd resources && $(WINDRES) app.rc -O coff -o ../build/app_res.o
 
 CORE_SRC = src/dsp/FFT.cpp src/dsp/BandScanner.cpp src/dsp/Filters.cpp src/dsp/Demodulator.cpp src/dsp/DspPipeline.cpp \
-           src/dsp/SpectrumProcessor.cpp src/sdr/SimulatedSDR.cpp src/io/IqFile.cpp
+           src/dsp/SpectrumProcessor.cpp src/sdr/SimulatedSDR.cpp src/io/IqFile.cpp src/io/WavWriter.cpp
 test:
 	@mkdir -p build
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_core tests/test_core.cpp $(CORE_SRC) -lpthread
@@ -40,8 +40,9 @@ test:
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_stereo tests/test_stereo.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_iq tests/test_iq.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_lab tests/test_lab.cpp src/journal/Journal.cpp src/dsp/LevelStats.cpp
+	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_wav tests/test_wav.cpp src/io/WavWriter.cpp -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_hints tests/test_hints.cpp
-	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab
+	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab && ./build/test_wav
 
 clean:
 	rm -rf build OpenRadioLab.exe

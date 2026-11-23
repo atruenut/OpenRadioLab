@@ -22,6 +22,8 @@ Licence: **GPL-2.0-only** (see [LICENSE](LICENSE)).
 | **Automatic hardware detection** | Scans USB, diagnoses a missing driver in plain language, loads `rtlsdr.dll` at run time, and falls back to a labelled simulator when nothing is plugged in. |
 | **Simulator** | A fictional radio world with stations, bursts, a DC spike and ADC clipping, so everything works with no hardware. Always labelled **SIMULATED**. |
 | **Recording and playback** | Save the whole captured band to a `.orliq` file; replay it later with play/pause/seek/repeat, or share it with someone who has no dongle. |
+| **Frequency Atlas** | Well-known bands in plain language, each with its information source and a button to jump to an example. A curated summary, not the official ISED table. |
+| **Save audio** | Save what you hear as a standard WAV file. |
 | **Learning Center** | Ten short lessons for total beginners (antennas, gain, reading the waterfall, modes, responsible listening in Canada) plus an A-Z radio dictionary. |
 | **Experiment Journal** | A plain-text notebook that captures frequency, mode, gain, measurement and recording with each entry. Exports to Markdown. |
 | **Signal Lab** | Plots a signal's level over minutes and reports duty cycle and bursts. Exports CSV. |
@@ -67,7 +69,7 @@ make CROSS=x86_64-w64-mingw32-
 make test
 ```
 
-`make test` builds and runs eight test programs (core DSP, demodulators, stereo, scanner, IQ files, learning content, hints, journal/statistics). The Makefile tracks header dependencies, so incremental builds are safe.
+`make test` builds and runs nine test programs (core DSP, demodulators, stereo, scanner, IQ files, WAV files, learning content, hints and the atlas table, journal/statistics). The Makefile tracks header dependencies, so incremental builds are safe.
 
 ## Project layout
 
@@ -94,7 +96,7 @@ docs/                   Getting-started manual (md + html), reference guide, thi
 Forks are welcome; that is why it is GPL. Start with **[CONTRIBUTING.md](CONTRIBUTING.md)**. Good first ideas:
 
 * **More lessons or translations.** Edit `src/learn/Content.cpp` (plain ASCII data; a test checks it).
-* **Canadian frequency data (ISED).** `src/Bands.h` is a *simplified* table; real allocation data is a planned improvement.
+* **Better frequency data.** `src/Bands.h` is a curated summary with a source note on each entry; checking entries against the official Canadian Table of Frequency Allocations (ISED), or adding more, is very welcome.
 * **SSB / CW modes**, HF direct sampling, a frequency atlas.
 * **More SDR backends** (Airspy, HackRF, SDRplay, Soapy). Implement `SDRDevice`; `IqFileDevice` is the shortest example.
 * **Testing on other dongles and Windows versions**, and reporting what you find.

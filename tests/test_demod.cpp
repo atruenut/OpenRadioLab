@@ -235,7 +235,7 @@ static void testBands() {
     CHECK(findBand(123.0e6) && findBand(123.0e6)->mode == 2, "123 MHz airband should suggest AM");
     CHECK(findBand(162.475e6) && findBand(162.475e6)->mode == 1, "162.475 MHz should suggest NFM");
     CHECK(findBand(5e6) && findBand(5e6)->mode == 2, "5 MHz shortwave should suggest AM");
-    CHECK(findBand(50e6) == nullptr, "50 MHz is not in the table");
+    CHECK(findBand(60e6) == nullptr, "60 MHz is not in the table");
 }
 
 int main() {
