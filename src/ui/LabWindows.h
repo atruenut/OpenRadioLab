@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <functional>
+#include <vector>
 #include <string>
 
 #include "../journal/Journal.h"
@@ -26,7 +27,9 @@ struct JournalHost {
 void showJournal(HWND owner, HINSTANCE hi, HFONT font, const JournalHost& host, bool newEntry);
 
 // ---- Signal Lab: level of the signal being listened to, over time
-void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> addToJournal);
+// grab: fills in the current (smoothed) spectrum, dBFS per bin, with the capture centre and sample rate; false if none yet.
+using SpectrumGrab = std::function<bool(std::vector<float>& db, double& centreHz, double& rateHz)>;
+void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> addToJournal, SpectrumGrab grab);
 bool signalLabOpen();
 void signalLabSetStatus(const std::string& why);   // shown in the lab when it is not recording
 // Feed one level reading (dBFS) about every 100 ms. Clears itself when the frequency changes.

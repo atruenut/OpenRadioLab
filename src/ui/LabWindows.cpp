@@ -7,6 +7,7 @@
 
 #include "LearnWindow.h"          // WM_ORL_TRYIT
 #include "../dsp/LevelStats.h"
+#include "../dsp/SpectrumCompare.h"
 #include "../Util.h"
 
 #include <commdlg.h>
@@ -248,7 +249,7 @@ LRESULT CALLBACK journalProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 // ====================================================================== signal lab
 
-enum { L_PAUSE = 1, L_CLEAR, L_CSV, L_JOURNAL, L_PLOT, L_TEXT, L_TITLE };
+enum { L_PAUSE = 1, L_CLEAR, L_CSV, L_JOURNAL, L_PLOT, L_TEXT, L_TITLE, L_SNAP, L_SNAPCLR };
 
 struct LState {
     HWND self = nullptr, owner = nullptr, plot = nullptr;
@@ -262,6 +263,9 @@ struct LState {
     bool paused = false;
     ULONGLONG lastStats = 0;
     LevelStats stats;
+    SpectrumGrab grab;
+    struct Snap { std::vector<float> db; double centre = 0, rate = 0; std::string when; };
+    std::vector<Snap> snaps;               // at most two: "before" and "after"
     std::string text, status;              // status: why nothing is being recorded right now (empty = recording)
     unsigned long pushes = 0;
 } L;
@@ -289,6 +293,11 @@ void lUpdateText() {
         t += "\r\n\r\n" + describeActivity(s);
     }
     t += "\r\n\r\nThis describes the signal level only. It is an observation, not an identification.";
+    if (L.snaps.size() == 1) t += "\r\n\r\n--- Spectrum snapshots ---\r\nSnapshot 1 taken at " + L.snaps[0].when + ". Take another later (or after moving the antenna) and the two are compared here.";
+    if (L.snaps.size() == 2) {
+        t += "\r\n\r\n--- Spectrum snapshots: " + L.snaps[0].when + " compared with " + L.snaps[1].when + " ---\r\n";
+        t += describeDiff(compareSpectra(L.snaps[0].db, L.snaps[1].db, L.snaps[0].centre, L.snaps[0].rate, L.snaps[1].centre, L.snaps[1].rate));
+    }
     L.text = t;
     SetWindowTextA(LH(L_TEXT), t.c_str());
     if (L.plot) InvalidateRect(L.plot, nullptr, FALSE);
@@ -299,9 +308,9 @@ void lLayout() {
     const int m = LS(8), bh = LS(28);
     int x = m;
     auto btn = [&](int id, int w) { SetWindowPos(LH(id), nullptr, x, m, w, bh, SWP_NOZORDER); x += w + LS(6); };
-    btn(L_PAUSE, LS(90)); btn(L_CLEAR, LS(80)); btn(L_CSV, LS(120)); btn(L_JOURNAL, LS(190));
+    btn(L_PAUSE, LS(90)); btn(L_CLEAR, LS(80)); btn(L_CSV, LS(120)); btn(L_JOURNAL, LS(190)); btn(L_SNAP, LS(120)); btn(L_SNAPCLR, LS(110));
     SetWindowPos(LH(L_TITLE), nullptr, x + LS(10), m + LS(5), std::max(LS(60), (int)rc.right - x - LS(10) - m), LS(20), SWP_NOZORDER);
-    const int top = 2 * m + bh, textH = LS(150);
+    const int top = 2 * m + bh, textH = LS(230);
     SetWindowPos(L.plot, nullptr, m, top, (int)rc.right - 2 * m, std::max(LS(100), (int)rc.bottom - top - textH - 2 * m), SWP_NOZORDER);
     SetWindowPos(LH(L_TEXT), nullptr, m, (int)rc.bottom - textH - m, (int)rc.right - 2 * m, textH, SWP_NOZORDER);
 }
@@ -410,6 +419,8 @@ LRESULT CALLBACK labProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             mk("BUTTON", "Clear", BS_PUSHBUTTON | WS_TABSTOP, 0, L_CLEAR);
             mk("BUTTON", "Save as CSV...", BS_PUSHBUTTON | WS_TABSTOP, 0, L_CSV);
             mk("BUTTON", "Add this to the journal", BS_PUSHBUTTON | WS_TABSTOP, 0, L_JOURNAL);
+            mk("BUTTON", "Take snapshot", BS_PUSHBUTTON | WS_TABSTOP, 0, L_SNAP);
+            mk("BUTTON", "Clear snapshots", BS_PUSHBUTTON | WS_TABSTOP, 0, L_SNAPCLR);
             mk("STATIC", "Level of the signal you are listening to, over time", 0, 0, L_TITLE);
             mk("EDIT", "", WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, WS_EX_CLIENTEDGE, L_TEXT);
             L.plot = CreateWindowExA(WS_EX_CLIENTEDGE, kPlotClass, "", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, h, (HMENU)(INT_PTR)L_PLOT, L.hi, nullptr);
@@ -427,6 +438,18 @@ LRESULT CALLBACK labProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case L_CLEAR: L.db.clear(); lUpdateText(); break;
                 case L_CSV: lExportCsv(); break;
                 case L_JOURNAL: if (L.addToJournal) L.addToJournal(); break;
+                case L_SNAP: {
+                    LState::Snap sn;
+                    if (!L.grab || !L.grab(sn.db, sn.centre, sn.rate)) { L.status = "no spectrum is available yet for a snapshot"; lUpdateText(); break; }
+                    SYSTEMTIME st; GetLocalTime(&st);
+                    char b[16]; std::snprintf(b, sizeof b, "%02d:%02d:%02d", st.wHour, st.wMinute, st.wSecond);
+                    sn.when = b;
+                    if (L.snaps.size() == 2) L.snaps.erase(L.snaps.begin());
+                    L.snaps.push_back(std::move(sn));
+                    lUpdateText();
+                    break;
+                }
+                case L_SNAPCLR: L.snaps.clear(); lUpdateText(); break;
             }
             return 0;
         case WM_CLOSE: DestroyWindow(h); return 0;
@@ -459,8 +482,8 @@ void showJournal(HWND owner, HINSTANCE hi, HFONT font, const JournalHost& host, 
     if (newEntry && J.self) jNew();
 }
 
-void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> addToJournal) {
-    L.owner = owner; L.hi = hi; L.font = font; L.addToJournal = std::move(addToJournal);
+void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> addToJournal, SpectrumGrab grab) {
+    L.owner = owner; L.hi = hi; L.font = font; L.addToJournal = std::move(addToJournal); L.grab = std::move(grab);
     if (L.self) { ShowWindow(L.self, SW_RESTORE); SetForegroundWindow(L.self); return; }
     L.dpi = dpiNow();
     CreateWindowExA(0, kLabClass, "OpenRadio Lab - Signal Lab", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,

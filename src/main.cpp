@@ -30,6 +30,7 @@
 #include "sdr/RTLSDRDevice.h"
 #include "sdr/SimulatedSDR.h"
 #include "ui/AtlasWindow.h"
+#include "ui/AntennaWindow.h"
 #include "ui/LabWindows.h"
 #include "ui/LearnWindow.h"
 #include "ui/SpectrumView.h"
@@ -38,7 +39,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.9.0";
+const char* kAppName = "OpenRadio Lab 0.10.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -49,7 +50,7 @@ enum {
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -70,8 +71,9 @@ const double kSteps[] = {100e3, 200e3, 500e3, 1e6, 2e6, 10e6};
 const char* kStepNames[] = {"100 kHz", "200 kHz", "500 kHz", "1 MHz", "2 MHz", "10 MHz"};
 const int kFftSizes[] = {512, 1024, 2048, 4096, 8192, 16384};
 const WindowType kWindows[] = {WindowType::Hann, WindowType::Hamming, WindowType::BlackmanHarris, WindowType::Rectangular};
-const char* kModeNames[] = {"WFM - wide FM (broadcast music/talk)", "NFM - narrow FM (two-way voice)", "AM - amplitude (aircraft, AM radio)"};
-const char* kModeShort[] = {"WFM", "NFM", "AM"};
+const char* kModeNames[] = {"WFM - wide FM (broadcast music/talk)", "NFM - narrow FM (two-way voice)", "AM - amplitude (aircraft, AM radio)",
+                          "USB - upper sideband (amateur voice above 10 MHz)", "LSB - lower sideband (amateur voice below 10 MHz)", "CW - Morse code (a pitched tone)"};
+const char* kModeShort[] = {"WFM", "NFM", "AM", "USB", "LSB", "CW"};
 
 struct DevEntry { bool sim; int rtlIndex; std::string label; std::string path; };
 
@@ -182,7 +184,7 @@ void loadSettings() {
     A.cfg.advanced = geti("advanced", 0) != 0;
     A.cfg.smoothPct = clampi(geti("smooth", 60), 0, 90);
     A.cfg.rangeDb = clampi(geti("range", 60), 30, 100);
-    A.cfg.mode = clampi(geti("mode", 0), 0, 2);
+    A.cfg.mode = clampi(geti("mode", 0), 0, 5);
     A.cfg.volume = clampi(geti("volume", 60), 0, 100);
     A.cfg.mute = geti("mute", 0) != 0;
     A.cfg.stereo = geti("stereo", 1) != 0;
@@ -237,6 +239,8 @@ std::string rateName(uint32_t r) {
 
 double bandwidthHz() {
     if (A.cfg.mode == 0) return Demodulator::kWfmBandwidth;
+    if (A.cfg.mode == 3 || A.cfg.mode == 4) return Demodulator::kSsbBandwidth;
+    if (A.cfg.mode == 5) return 400.0;
     return (A.cfg.mode == 1 ? A.cfg.nfmBwKhz : A.cfg.amBwKhz) * 1000.0;
 }
 double squelchDb() {
@@ -247,6 +251,7 @@ double squelchDb() {
 void updateListenLabels() {
     char b[48];
     if (A.cfg.mode == 0) std::snprintf(b, sizeof b, "180 kHz");
+    else if (A.cfg.mode >= 3) std::snprintf(b, sizeof b, "%.1f kHz", bandwidthHz() / 1000.0);
     else std::snprintf(b, sizeof b, "%.0f kHz", bandwidthHz() / 1000.0);
     setText(ID_L_BWV, b);
     if (A.cfg.squelchPos == 0) std::snprintf(b, sizeof b, "off");
@@ -255,7 +260,7 @@ void updateListenLabels() {
 }
 
 void syncBwControl() {
-    if (A.cfg.mode == 0) {
+    if (A.cfg.mode == 0 || A.cfg.mode >= 3) {                      // WFM, SSB and CW use a fixed bandwidth
         EnableWindow(H(ID_BW), FALSE);
     } else {
         EnableWindow(H(ID_BW), TRUE);
@@ -536,7 +541,7 @@ void rescan(bool switchToRealIfIdle) {
 // ------------------------------------------------------------------ tuning actions
 
 void setModeIndex(int m, bool fromUser) {
-    A.cfg.mode = std::max(0, std::min(2, m));
+    A.cfg.mode = std::max(0, std::min(5, m));
     cbSel(ID_LISTEN, A.cfg.mode);
     syncBwControl();
     applyListen();
@@ -909,11 +914,23 @@ void updateStatus() {
     SendMessageA(sb, SB_SETTEXTA, 4, (LPARAM)(A.dev && A.dev->isPlayback() ? (A.dev->isSimulated() ? "PLAYBACK (simulated)" : "PLAYBACK") : (A.dev && A.dev->isSimulated() ? "SIMULATED DATA" : "Live")));
 }
 
+// Smoothed copy of the latest spectrum, so a snapshot is not one noisy line.
+struct SpecAvg { std::vector<float> db; double centre = 0, rate = 0; int n = 0; } g_spec;
+void updateSpecAvg(const std::vector<SpectrumFrame>& fr) {
+    for (const auto& f : fr) {
+        if (f.db.size() != g_spec.db.size() || f.centerHz != g_spec.centre || f.sampleRate != g_spec.rate) {
+            g_spec.db = f.db; g_spec.centre = f.centerHz; g_spec.rate = f.sampleRate; g_spec.n = 1; continue;
+        }
+        for (size_t i = 0; i < f.db.size(); ++i) g_spec.db[i] += 0.2f * (f.db[i] - g_spec.db[i]);
+        ++g_spec.n;
+    }
+}
 void onTimer() {
     std::vector<SpectrumFrame> fr;
     A.proc.drain(fr);
     A.framesSince += (int)fr.size();
     A.view.addFrames(fr);
+    updateSpecAvg(fr);
     if (A.scanning) scanFeed(fr);
     if (A.recWas && !A.rec.active()) { stopRecording(true); updateInfo(); }
     if (A.wavWas && !A.wav.active()) { stopAudioCapture(true); updateInfo(); }
@@ -1153,7 +1170,13 @@ void openJournal(bool newEntry) {
     showJournal(A.hwnd, A.hi, A.font, host, newEntry);
 }
 
-void openSignalLab() { showSignalLab(A.hwnd, A.hi, A.font, [] { openJournal(true); }); }
+void openSignalLab() {
+    showSignalLab(A.hwnd, A.hi, A.font, [] { openJournal(true); },
+                  [](std::vector<float>& db, double& c, double& r) {
+                      if (g_spec.n < 5 || g_spec.db.empty()) return false;
+                      db = g_spec.db; c = g_spec.centre; r = g_spec.rate; return true;
+                  });
+}
 
 void toggleAudioCapture() {
     if (A.wav.active()) { stopAudioCapture(true); updateInfo(); return; }
@@ -1272,6 +1295,7 @@ void onCommand(int id, int code) {
         case ID_M_NEWENTRY: openJournal(true); break;
         case ID_M_LAB: openSignalLab(); break;
         case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
+        case ID_M_ANTENNA: showAntennaWorkshop(A.hwnd, A.hi, A.font, A.cfg.vfoHz); break;
         case ID_M_EXIT: SendMessageA(A.hwnd, WM_CLOSE, 0, 0); break;
         case ID_PB_PLAY: playbackPlayPause(); break;
         case ID_PB_LOOP:
@@ -1439,6 +1463,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     registerLearnClass(hi);
     registerLabClasses(hi);
     registerAtlasClass(hi);
+    registerAntennaClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1469,6 +1494,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
     AppendMenuA(tools, MF_STRING, ID_M_LAB, "Signal Lab: watch a signal over time...");
     AppendMenuA(tools, MF_STRING, ID_M_ATLAS, "Frequency Atlas: what is where...");
+    AppendMenuA(tools, MF_STRING, ID_M_ANTENNA, "Antenna Workshop: lengths and build guides...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_REPORT, "Device report...");
     AppendMenuA(help, MF_STRING, ID_HELP, "Getting-started manual");

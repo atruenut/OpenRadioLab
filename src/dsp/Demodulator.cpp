@@ -43,6 +43,7 @@ void Demodulator::setStereo(bool on) { Lock l(m_); if (on != stereo_) { stereo_ 
 
 void Demodulator::rebuild() {
     dirty_ = false;
+    mixShift_ = 0; bfoHz_ = 0;
     D1_ = std::max(1, (int)std::floor(fs_ / 250000.0));
     r1_ = fs_ / D1_;
     if (D1_ == 1) {
@@ -73,10 +74,16 @@ void Demodulator::rebuild() {
         fmScale_ = (float)(r1_ / (2.0 * kPi * 75000.0));                 // 75 kHz deviation = full scale
     } else {
         const double half = bw_ / 2.0;
+        mixShift_ = 0; bfoHz_ = 0;
+        if (mode_ == Mode::USB) { mixShift_ = half;  bfoHz_ = half; }          // passband sits just above the carrier
+        if (mode_ == Mode::LSB) { mixShift_ = -half; bfoHz_ = -half; }         // ... or just below it
+        if (mode_ == Mode::CW)  { bfoHz_ = kCwTone; }                           // carrier becomes a pitched tone
         D2_ = std::max(1, (int)std::floor(r1_ / kAudioRate));
         r2_ = r1_ / D2_;
         f2_.configure(designLowpass(r1_, half, half * 2.0), D2_, true);
-        post_.lowpass(r2_, mode_ == Mode::NFM ? std::min(3400.0, half) : half);
+        post_.lowpass(r2_, mode_ == Mode::NFM ? std::min(3400.0, half) : (mode_ == Mode::CW ? 1200.0 : (mode_ == Mode::USB || mode_ == Mode::LSB) ? 2 * half : half));
+        bfoInc_ = (uint32_t)((int64_t)std::llround(bfoHz_ / r2_ * 4294967296.0) & 0xFFFFFFFFll);
+        bfoPhase_ = 0; agc_ = 0; agcDecay_ = (float)(1.0 - std::exp(-1.0 / (r2_ * 0.4)));
         ra_ = r2_;
         fmScale_ = (float)(r2_ / (2.0 * kPi * 5000.0));                  // 5 kHz deviation = full scale
         amAlpha_ = (float)(1.0 - std::exp(-1.0 / (r2_ * 0.2)));          // 200 ms carrier tracking (AGC)
@@ -86,7 +93,7 @@ void Demodulator::rebuild() {
     rsR_.configure(ra_, kAudioRate);
     outCh_ = (mode_ == Mode::WFM && stereo_) ? 2 : 1;
 
-    inc_ = (uint32_t)((int64_t)std::llround(off_ / fs_ * 4294967296.0) & 0xFFFFFFFFll);
+    inc_ = (uint32_t)((int64_t)std::llround((off_ + mixShift_) / fs_ * 4294967296.0) & 0xFFFFFFFFll);
     phase_ = 0;
     prevI_ = 1; prevQ_ = 0; deemph_ = 0; power_ = 0;
     post_.reset();
@@ -211,6 +218,20 @@ void Demodulator::process(const float* iq, size_t n, std::vector<float>& out) {
                 pi = s2i_[k]; pq = s2q_[k];
             }
             prevI_ = pi; prevQ_ = pq;
+        } else if (mode_ == Mode::USB || mode_ == Mode::LSB || mode_ == Mode::CW) {
+            // Move the filtered passband back up to audio frequencies (real part of z * e^{j w t}), then AGC.
+            uint32_t bp = bfoPhase_;
+            float ag = agc_;
+            for (size_t k = 0; k < m; ++k) {
+                const uint32_t idx = bp >> 18;
+                const float s = T[idx], c = T[(idx + kTab / 4) & (kTab - 1)];
+                bp += bfoInc_;
+                const float x = post_.process(s2i_[k] * c - s2q_[k] * s);
+                const float ax = std::fabs(x);
+                if (ax > ag) ag = ax; else ag += agcDecay_ * (ax - ag);       // instant attack, 0.4 s release
+                au_[k] = x * (0.35f / (ag + 1e-7f));
+            }
+            bfoPhase_ = bp; agc_ = ag;
         } else {
             float avg = amAvg_;
             for (size_t k = 0; k < m; ++k) {

@@ -5,7 +5,7 @@
 
 // Receiver chain for one channel inside the captured band:
 //   mixer (shift the wanted signal to 0 Hz) -> channel filter + decimation
-//   -> WFM/NFM/AM detector -> (de-emphasis) -> audio filter -> resample to 48 kHz -> squelch/volume
+//   -> WFM/NFM/AM/SSB/CW detector -> (de-emphasis) -> audio filter -> resample to 48 kHz -> squelch/volume
 //
 // Thread-safe: settings may be changed from the UI thread while process() runs on the DSP thread.
 #pragma once
@@ -21,9 +21,11 @@ namespace orl {
 
 class Demodulator {
 public:
-    enum class Mode { WFM = 0, NFM = 1, AM = 2 };
+    enum class Mode { WFM = 0, NFM = 1, AM = 2, USB = 3, LSB = 4, CW = 5 };
     static constexpr double kAudioRate = 48000.0;
     static constexpr double kWfmBandwidth = 180000.0;
+    static constexpr double kCwTone = 700.0;       // pitch of the Morse tone, Hz
+    static constexpr double kSsbBandwidth = 2700.0;
 
     Demodulator();
 
@@ -74,6 +76,10 @@ private:
     Biquad post_;
     float prevI_ = 1, prevQ_ = 0, deemph_ = 0, deemphAlpha_ = 0.1f, fmScale_ = 1, amAvg_ = 0, amAlpha_ = 1e-3f;
     double power_ = 0;
+    // SSB/CW: the passband is shifted to 0 Hz for filtering, then moved back up by a beat-frequency oscillator
+    double mixShift_ = 0, bfoHz_ = 0;
+    uint32_t bfoPhase_ = 0, bfoInc_ = 0;
+    float agc_ = 0, agcDecay_ = 0;
 
     std::vector<float> wi_, wq_, s1i_, s1q_, s2i_, s2q_, au_, au2_, dummy_;
     std::atomic<double> level_{-120.0};

@@ -63,7 +63,7 @@ void showSel() {
         return;
     }
     const Band& b = *G.shown[i];
-    static const char* modes[] = {"WFM (wide FM)", "NFM (narrow FM)", "AM"};
+    static const char* modes[] = {"WFM (wide FM)", "NFM (narrow FM)", "AM", "USB (upper sideband)", "LSB (lower sideband)", "CW (Morse)"};
     std::string t = "Range: " + range(b) + "\r\nGroup: " + b.category + "\r\nUsually listened to as: " + modes[b.mode] + "\r\n\r\n" + b.note +
                     "\r\n\r\nWhere this information comes from:\r\n" + b.source +
                     "\r\n\r\nThis atlas is a plain-language summary of well-known bands, not the official allocation table. "

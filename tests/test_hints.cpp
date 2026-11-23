@@ -29,7 +29,7 @@ int main() {
         if (!(b[i].lo < b[i].hi) || !b[i].name || !*b[i].name || !b[i].note || !b[i].source || !*b[i].source || !b[i].category) { ++g_fail; std::printf("  FAIL: atlas entry %zu incomplete\n", i); continue; }
         for (const char* f : {b[i].name, b[i].note, b[i].source, b[i].category})
             for (const char* c = f; *c; ++c) if ((unsigned char)*c > 126) { ++g_fail; std::printf("  FAIL: non-ASCII in atlas entry %zu\n", i); break; }
-        if (b[i].mode < 0 || b[i].mode > 2) { ++g_fail; std::printf("  FAIL: atlas mode %zu\n", i); }
+        if (b[i].mode < 0 || b[i].mode > 5) { ++g_fail; std::printf("  FAIL: atlas mode %zu\n", i); }
         if (b[i].tryHz > 0 && !(b[i].tryHz >= b[i].lo && b[i].tryHz <= b[i].hi)) { ++g_fail; std::printf("  FAIL: tryHz outside range for %s\n", b[i].name); }
     }
     const Band* wx = findBand(162.475e6);

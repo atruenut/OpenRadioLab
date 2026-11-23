@@ -97,7 +97,7 @@ Forks are welcome; that is why it is GPL. Start with **[CONTRIBUTING.md](CONTRIB
 
 * **More lessons or translations.** Edit `src/learn/Content.cpp` (plain ASCII data; a test checks it).
 * **Better frequency data.** `src/Bands.h` is a curated summary with a source note on each entry; checking entries against the official Canadian Table of Frequency Allocations (ISED), or adding more, is very welcome.
-* **SSB / CW modes**, HF direct sampling, a frequency atlas.
+* HF direct sampling, more SDR backends.
 * **More SDR backends** (Airspy, HackRF, SDRplay, Soapy). Implement `SDRDevice`; `IqFileDevice` is the shortest example.
 * **Testing on other dongles and Windows versions**, and reporting what you find.
 

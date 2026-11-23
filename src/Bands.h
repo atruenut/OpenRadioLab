@@ -18,7 +18,7 @@ namespace orl {
 struct Band {
     double lo, hi;          // Hz
     const char* name;
-    int mode;               // suggested demodulation: 0 = WFM, 1 = NFM, 2 = AM
+    int mode;               // suggested demodulation: 0 = WFM, 1 = NFM, 2 = AM, 3 = USB, 4 = LSB, 5 = CW
     const char* note;       // what it is and what to expect, in plain language
     const char* category;
     double tryHz;           // a good example frequency to jump to (0 = none, e.g. out of the dongle's range)
@@ -43,10 +43,10 @@ inline const Band* bandTable(size_t& count) {
         {121.45e6, 121.55e6, "121.5 MHz aircraft emergency frequency", 2, "The international aeronautical emergency frequency. Normally silent.", "Aviation", 121.5e6, kGen},
         {1085e6,  1095e6,  "Aircraft transponders (1090 MHz)", 1, "Digital pulses. They look like blips and are not heard as speech.", "Aviation", 0, kGen},
         // ---- amateur radio
-        {3.5e6,   4.0e6,   "80 m amateur band", 2, "Amateur radio. Mostly single-sideband voice, which this version cannot decode yet. Needs HF capability.", "Amateur radio", 0, kGen},
-        {7.0e6,   7.3e6,   "40 m amateur band", 2, "Amateur radio. Mostly single-sideband voice and Morse, not yet supported here. Needs HF capability.", "Amateur radio", 0, kGen},
-        {14.0e6,  14.35e6, "20 m amateur band", 2, "Amateur radio, worldwide contacts. Mostly single-sideband, not yet supported here. Needs HF capability.", "Amateur radio", 0, kGen},
-        {28.0e6,  29.7e6,  "10 m amateur band", 2, "Amateur radio. Needs HF capability.", "Amateur radio", 0, kGen},
+        {3.5e6,   4.0e6,   "80 m amateur band", 4, "Amateur radio. Mostly single-sideband voice (lower sideband by convention) plus Morse near the bottom of the band. Needs HF capability.", "Amateur radio", 0, kGen},
+        {7.0e6,   7.3e6,   "40 m amateur band", 4, "Amateur radio. Single-sideband voice (lower sideband by convention) and Morse near 7.0 to 7.05 MHz. Needs HF capability.", "Amateur radio", 0, kGen},
+        {14.0e6,  14.35e6, "20 m amateur band", 3, "Amateur radio, worldwide contacts. Mostly single-sideband (upper sideband by convention) and Morse near 14.0 to 14.07 MHz. Needs HF capability.", "Amateur radio", 0, kGen},
+        {28.0e6,  29.7e6,  "10 m amateur band", 3, "Amateur radio. Single-sideband voice (upper sideband by convention). Needs HF capability.", "Amateur radio", 0, kGen},
         {50e6,    54e6,    "6 m amateur band", 1, "Amateur radio: FM and single-sideband voice, digital modes. Often quiet.", "Amateur radio", 0, kRac},
         {144e6,   148e6,   "2 m amateur radio band", 1, "Narrowband FM voice through local repeaters and direct contacts, usually bursty.", "Amateur radio", 146.52e6, kRac},
         {430e6,   450e6,   "70 cm amateur radio band", 1, "Narrowband FM voice, repeaters and digital modes.", "Amateur radio", 0, kRac},

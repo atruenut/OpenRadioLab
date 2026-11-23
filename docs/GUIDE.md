@@ -84,7 +84,7 @@ The UI never touches hardware directly and never blocks on USB or DSP. Threads u
 
 ## 6. Roadmap (next)
 
-1. Stereo FM, SSB/CW, recording and playback of IQ.
+1. HF direct sampling, more SDR backends.
 2. Learning Center (lesson engine, the six starter lessons) and Radio Dictionary.
 3. Signal Lab: generator, AM/FM modulation playground, FFT visualiser.
 4. Experiment Journal (SQLite), Frequency Atlas with Canadian (ISED) data, HF via direct sampling.
@@ -167,3 +167,19 @@ Private services (cell phones, police and fire, business radio) are deliberately
 **Save audio** (button next to Stereo, or File menu) saves what you hear as a normal 16-bit stereo 48 kHz WAV file, up to
 1 GB. Unlike **Record**, which saves the raw radio for replay in this app, a WAV plays anywhere. It keeps going while you retune,
 and muting records silence.
+
+## SSB, CW, Antenna Workshop, spectrum snapshots (0.10.0)
+
+**Sideband and Morse modes.** The Listen as list now has USB, LSB and CW. Amateur radio voice on HF uses single sideband
+(LSB below 10 MHz, USB above), which has no carrier and sounds like Donald Duck until the frequency is within about
+50 Hz of right: nudge the tuning. CW is Morse: a plain carrier switched on and off. The receiver adds a 700 Hz beat tone so you hear beeps.
+Bandwidths are fixed (2.7 kHz for SSB, 400 Hz for CW). Both have an automatic gain control so weak and strong stations sound similar.
+HF still needs a dongle with HF capability (direct sampling or an upconverter).
+
+**Antenna Workshop** (Tools menu). Type a frequency or pick a band: it shows the wavelength and the lengths to cut for a whip, a dipole and ground-plane radials,
+plus seven short build guides (dipole, V for weather satellites, ground plane, long wire for HF, safety).
+
+**Spectrum snapshots** (Signal Lab). *Take snapshot* stores the current spectrum (smoothed over about a second). With two snapshots the lab lists which signals appeared,
+disappeared or changed strength by 3 dB or more. Both must use the same centre frequency and sample rate. Useful for comparing two antennas, two gain settings or morning against evening.
+
+**Signal Lab** now refreshes on its own timer and says why it is not recording (no receiver, scanning, playback paused, Pause pressed).
