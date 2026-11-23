@@ -1,0 +1,241 @@
+<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>OpenRadio Lab - Getting Started</title><style>
+:root{--bg:#fff;--fg:#1d2330;--mut:#566078;--line:#d9deea;--code:#f1f4fa;--acc:#1f6feb;--th:#eef2fb}
+@media (prefers-color-scheme:dark){:root{--bg:#10141d;--fg:#e3e8f2;--mut:#9aa6bf;--line:#2b3347;--code:#1a2030;--acc:#6aa5ff;--th:#192033}}
+html{background:var(--bg)}
+body{max-width:860px;margin:0 auto;padding:28px 20px 60px;color:var(--fg);background:var(--bg);
+ font:16px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+h1{font-size:2rem;margin:.2em 0 .1em}h2{margin-top:2.2em;padding-top:.4em;border-top:1px solid var(--line)}
+h3{margin-top:1.6em}em{color:var(--mut)}a{color:var(--acc)}
+code{background:var(--code);padding:.1em .35em;border-radius:4px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:8px;overflow-x:auto;line-height:1.35}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.95rem}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}th{background:var(--th)}
+hr{border:0;border-top:1px solid var(--line);margin:1.6em 0}
+@media (max-width:600px){body{padding:18px 14px}table{display:block;overflow-x:auto}}
+</style></head><body><h1>OpenRadio Lab - Getting Started</h1>
+<p><em>For complete beginners. No radio or computer-driver knowledge needed.</em></p>
+<p><strong>You can start in 10 seconds with no hardware at all.</strong> Run <code>OpenRadioLab.exe</code> and it starts with a
+built-in <strong>simulated radio</strong> (clearly labelled "SIMULATED"). Everything on this page about dongles, drivers
+and DLL files is only needed when you want to listen to <strong>real</strong> radio.</p>
+<h2>1. The big picture</h2>
+<p>A <strong>Software Defined Radio (SDR)</strong> is a radio where most of the work is done by software instead of by
+dedicated circuits. A tiny USB "dongle" catches radio waves from an antenna and turns them into a stream of
+numbers. A program on your computer (this one) turns those numbers into pictures and sound.</p>
+<pre><code> Antenna  -&gt;  USB dongle  -&gt;  USB cable  -&gt;  Windows  -&gt;  OpenRadio Lab
+ (catches     (tuner chip +   (carries      (needs to      (draws the
+  waves)       converter)      the numbers)   let us in)     spectrum, plays audio)
+</code></pre>
+<p>The most popular dongles are called <strong>RTL-SDR</strong>. They were originally cheap TV receivers; hobbyists
+discovered that the chip inside, an <strong>RTL2832U</strong>, can hand over the raw radio data. That is why they cost
+about the same as a lunch and why this project starts with them.</p>
+<h2>2. Why do I need extra files and a driver tool?</h2>
+<p>This is the question everyone asks, so here is the honest answer. Getting data from the dongle needs three
+small helpers. Each one solves a specific problem:</p>
+<table>
+<thead>
+<tr>
+<th>Helper</th>
+<th>Plain-English job</th>
+<th>Why it is needed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>WinUSB driver</strong> (installed with a free tool called <strong>Zadig</strong>)</td>
+<td>Lets a program talk <em>directly</em> to one specific USB device.</td>
+<td>Windows decides which "driver" (translator) handles each USB device. For a TV-stick-style dongle it either has none or the wrong kind, and programs are not allowed to talk to the device through it. WinUSB is Microsoft's own generic driver that gives programs direct access.</td>
+</tr>
+<tr>
+<td><strong>libusb-1.0.dll</strong></td>
+<td>The USB plumbing.</td>
+<td>It handles the low-level conversation between a program and a WinUSB device.</td>
+</tr>
+<tr>
+<td><strong>rtlsdr.dll</strong> (the <em>librtlsdr</em> library)</td>
+<td>Knows the dongle's secret language.</td>
+<td>The RTL2832U chip has its own commands: how to tune, set the sample rate, start streaming. The open-source community figured these out and packaged them in this library. OpenRadio Lab asks the library instead of re-inventing it.</td>
+</tr>
+</tbody>
+</table>
+<p>Put together:</p>
+<pre><code>OpenRadio Lab  -&gt;  rtlsdr.dll  -&gt;  libusb-1.0.dll  -&gt;  WinUSB driver  -&gt;  your dongle
+ (the app)         (speaks RTL)     (speaks USB)        (Windows lets us in)
+</code></pre>
+<p><strong>What is a DLL?</strong> A "dynamic link library" is a shared toolbox of code. A program can borrow tools from a
+DLL that sits in the same folder, which is why the two <code>.dll</code> files must be placed <strong>next to
+<code>OpenRadioLab.exe</code></strong>.</p>
+<p><strong>What does Zadig actually change?</strong> It tells Windows: "for <em>this one device</em>, use the WinUSB driver".
+It changes nothing else and you can undo it (see section 7). Always check the device name in the Zadig
+dropdown before clicking, and never change a keyboard, mouse or USB hub.</p>
+<p><strong>Why isn't all of this bundled in the download?</strong> They are separate open-source projects with their own
+licences and release schedules, and the right version matters: <strong>RTL-SDR Blog V4 dongles need the RTL-SDR
+Blog build of the library.</strong> Future OpenRadio Lab releases may bundle them; for now you fetch them once.</p>
+<h2>3. Step by step</h2>
+<h3>Step 1 - Try the simulator first (2 minutes)</h3>
+<ol>
+<li>Start <code>OpenRadioLab.exe</code>. The banner says <strong>SIMULATED SDR</strong>.</li>
+<li>You will see peaks in the top graph (radio stations) and a scrolling picture below (the waterfall).</li>
+<li>Click a big peak: the app measures it. Double-click it to <strong>listen</strong> (red marker). Turn up Volume.</li>
+<li>Press <strong>Help</strong> any time to reopen this page.</li>
+</ol>
+<h3>Step 2 - Connect the antenna and dongle</h3>
+<ol>
+<li>Screw the antenna onto the dongle's connector (usually SMA). Extend a telescopic antenna fully.</li>
+<li>Put the antenna near a window, away from computers and chargers (they make radio noise).</li>
+<li>Plug the dongle into a USB port. Avoid unpowered hubs. Windows may say it is "setting up a device" and
+   may find nothing: that is expected.</li>
+</ol>
+<h3>Step 3 - Get the two DLL files</h3>
+<ol>
+<li>Download the Windows package for the <strong>RTL-SDR Blog</strong> drivers (see the RTL-SDR Blog Quick Start Guide at
+   rtl-sdr.com). Make sure you are on the real site.</li>
+<li>Open the <strong>64-bit (x64)</strong> folder. Copy <strong><code>rtlsdr.dll</code></strong> and <strong><code>libusb-1.0.dll</code></strong>.</li>
+<li>Paste both into the same folder as <code>OpenRadioLab.exe</code>.</li>
+</ol>
+<p><em>Use the 64-bit files with this 64-bit program. A 32/64-bit mismatch is the most common reason the app says
+the DLL "was loaded but is missing functions".</em></p>
+<h3>Step 4 - Install the WinUSB driver with Zadig</h3>
+<ol>
+<li>Download <strong>Zadig</strong> from its official page, zadig.akeo.ie, and run it.</li>
+<li>Menu <strong>Options &gt; List All Devices</strong>.</li>
+<li>In the dropdown choose your dongle. It is usually called <strong>"Bulk-In, Interface (Interface 0)"</strong>
+   (sometimes "RTL2832U"). <em>Pick Interface 0, not Interface 1.</em></li>
+<li>In the driver box on the right make sure the target says <strong>WinUSB</strong>.</li>
+<li>Click <strong>Replace Driver</strong> (or <strong>Install Driver</strong>) and wait for "installed successfully".</li>
+</ol>
+<h3>Step 5 - Start OpenRadio Lab</h3>
+<p>It detects the dongle automatically and switches from the simulator. The banner now says
+<strong>LIVE RECEIVER</strong> and the status bar says <strong>Live</strong>. If not, press <strong>Rescan</strong>, then <strong>Device report...</strong>: it
+tells you exactly what is missing and what to do.</p>
+<h3>Step 6 - Your first real listen</h3>
+<ol>
+<li>Use <strong>Quick jump to... &gt; FM broadcast</strong> (or type <code>98.5</code> and press Enter).</li>
+<li>Look for tall peaks about 0.2 MHz apart. <strong>Double-click</strong> one. The red marker shows where you are listening.</li>
+<li>Turn up <strong>Volume</strong>. If you only hear hiss, double-click a taller peak, or raise the antenna and move it
+   closer to a window.</li>
+</ol>
+<p><b>Keeping the DLLs when you update:</b> OpenRadio Lab also looks for the two DLLs in a <code>libs</code> folder next to the .exe and in <code>%APPDATA%\\OpenRadioLab\\libs</code> (paste that into the Windows Explorer address bar). Put them in the second place once and every future version will find them, so you never have to download them again. (They are not bundled because they are separate projects with their own licences; see THIRD-PARTY.md.)</p>
+<h2>4. Words you will see</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Spectrum</strong></td>
+<td>A graph of signal strength at each frequency right now.</td>
+</tr>
+<tr>
+<td><strong>Waterfall</strong></td>
+<td>The spectrum over time, newest at the top; brighter means stronger.</td>
+</tr>
+<tr>
+<td><strong>Centre frequency</strong></td>
+<td>The middle of what the dongle is capturing.</td>
+</tr>
+<tr>
+<td><strong>Listening frequency</strong></td>
+<td>The one you hear (red marker). It can be anywhere inside the capture.</td>
+</tr>
+<tr>
+<td><strong>Sample rate (MS/s)</strong></td>
+<td>Millions of samples per second; also how wide a slice of spectrum you see.</td>
+</tr>
+<tr>
+<td><strong>dBFS</strong></td>
+<td>Signal level where 0 is the strongest the receiver can represent. Weaker is more negative.</td>
+</tr>
+<tr>
+<td><strong>Noise floor</strong></td>
+<td>The ragged baseline of background noise. Signals must rise above it.</td>
+</tr>
+<tr>
+<td><strong>WFM / NFM / AM</strong></td>
+<td>Ways of carrying sound: wide FM (music stations), narrow FM (voice, weather), amplitude (aircraft, AM radio).</td>
+</tr>
+<tr>
+<td><strong>Squelch</strong></td>
+<td>Mutes the audio when the signal is below a level, so you do not hear hiss.</td>
+</tr>
+</tbody>
+</table>
+<h2>5. Tips for good reception</h2>
+<ul>
+<li>The antenna matters more than the dongle. Higher, near a window, away from electronics.</li>
+<li>A telescopic antenna works best when its length suits the frequency (the Antenna Workshop will teach this).</li>
+<li>Too much <strong>gain</strong> makes strong signals smear across the screen; too little hides weak ones. Beginner mode
+  chooses automatic gain for you.</li>
+<li>A narrow spike dead in the middle of the screen is not a station. It is a harmless artefact of the receiver.</li>
+</ul>
+<h2>6. Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>What you see</th>
+<th>Likely cause and fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"rtlsdr.dll is missing"</td>
+<td>Copy <code>rtlsdr.dll</code> and <code>libusb-1.0.dll</code> next to the .exe (step 3).</td>
+</tr>
+<tr>
+<td>"loaded but missing functions"</td>
+<td>Wrong DLL or a 32/64-bit mismatch. Use the x64 files.</td>
+</tr>
+<tr>
+<td>"wrong driver" / "no working driver"</td>
+<td>Run Zadig and install WinUSB for the dongle (step 4).</td>
+</tr>
+<tr>
+<td>Found but "could not be opened"</td>
+<td>Close other SDR programs; try another USB port; unplug and replug.</td>
+</tr>
+<tr>
+<td>Dongle not found at all</td>
+<td>Different USB port or cable; avoid hubs; open the Device report.</td>
+</tr>
+<tr>
+<td>Works, but only noise</td>
+<td>Normal indoors. Try the FM preset, a window and a longer antenna.</td>
+</tr>
+<tr>
+<td>No sound</td>
+<td>Check Volume and Mute; in Advanced mode check <strong>Audio out</strong>; check the squelch is off.</td>
+</tr>
+<tr>
+<td>Windows or antivirus warns about a DLL</td>
+<td>Download only from official project pages and scan the files.</td>
+</tr>
+<tr>
+<td>V4 dongle misbehaves</td>
+<td>Use the RTL-SDR Blog build of the library. HF (below about 24 MHz) is not built in yet.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="noise">6b. Only noise on FM (no stations)</h2>
+<p>First press <b>Scan FM</b>. The app sweeps 88-108 MHz, lists every station it finds in the <b>Stations</b> box, and if it finds none it tells you how far above the noise the best channel was. Then work down this list:</p>
+<ol>
+<li><b>Antenna.</b> Is it screwed in tightly? Extend the telescopic antenna to about 75 cm and put the dongle near a window. No antenna means noise only. This is the most common cause.</li>
+<li><b>Gain.</b> Press <i>Mode: Beginner</i> to switch to Advanced, untick <b>Auto gain</b>, and try 30-45 dB. If wide smeared humps fill the picture, you went too high; back off.</li>
+<li><b>Library mismatch.</b> An RTL-SDR Blog <b>V4</b> dongle (tuner <i>R828D</i> in the banner) needs a recent RTL-SDR Blog build of <code>rtlsdr.dll</code>; an old generic one can show noise, wrong frequencies or corrupted signals. Get the library from the RTL-SDR Blog's official driver package and replace the old one.</li>
+<li><b>Weak area / indoors.</b> Try a high spot outdoors. Rural FM is often only a few strong stations.</li>
+<li><b>Do not use direct sampling</b> for FM. That mode is for HF and is not what you want here.</li>
+</ol>
+<h2>7. Undoing the Zadig change</h2>
+<p>Open <strong>Device Manager</strong>, find the dongle (under <em>Universal Serial Bus devices</em>), right-click it,
+choose <strong>Uninstall device</strong>, tick <strong>Delete the driver software</strong> if offered, then unplug and replug it.</p>
+<h2>8. Using radio responsibly</h2>
+<p>OpenRadio Lab is <strong>receive-only</strong>: it cannot transmit. Listening to broadcasts, aircraft, weather and
+amateur radio is a popular hobby, but rules differ by country (in Canada they come from ISED and the
+Radiocommunication Act). In general: do not share, record or act on <strong>private</strong> communications, do not
+try to defeat encryption, and check your local rules. This is general information, not legal advice.</p>
+<h2>9. Licence</h2>
+<p>OpenRadio Lab is free software released under the <strong>GNU General Public License, version 2</strong> (see <code>LICENSE</code>).
+You may use, study, change and share it under those terms. The helper libraries and Zadig are separate
+projects with their own licences; see <code>docs/THIRD-PARTY.md</code>.</p></body></html>
