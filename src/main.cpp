@@ -31,6 +31,7 @@
 #include "sdr/SimulatedSDR.h"
 #include "ui/AtlasWindow.h"
 #include "ui/AntennaWindow.h"
+#include "ui/MorseWindow.h"
 #include "ui/LabWindows.h"
 #include "ui/LearnWindow.h"
 #include "ui/SpectrumView.h"
@@ -39,7 +40,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.10.1";
+const char* kAppName = "OpenRadio Lab 0.11.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -50,7 +51,7 @@ enum {
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -934,6 +935,7 @@ void onTimer() {
     A.framesSince += (int)fr.size();
     A.view.addFrames(fr);
     updateSpecAvg(fr);
+    morseSetCwMode(A.cfg.mode == 5);
     if (A.scanning) scanFeed(fr);
     if (A.recWas && !A.rec.active()) { stopRecording(true); updateInfo(); }
     if (A.wavWas && !A.wav.active()) { stopAudioCapture(true); updateInfo(); }
@@ -1298,6 +1300,7 @@ void onCommand(int id, int code) {
         case ID_M_NEWENTRY: openJournal(true); break;
         case ID_M_LAB: openSignalLab(); break;
         case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
+        case ID_M_MORSE: showMorseWindow(A.hwnd, A.hi, A.font); break;
         case ID_M_ANTENNA: showAntennaWorkshop(A.hwnd, A.hi, A.font, A.cfg.vfoHz); break;
         case ID_M_EXIT: SendMessageA(A.hwnd, WM_CLOSE, 0, 0); break;
         case ID_PB_PLAY: playbackPlayPause(); break;
@@ -1467,6 +1470,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     registerLabClasses(hi);
     registerAtlasClass(hi);
     registerAntennaClass(hi);
+    registerMorseClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1497,6 +1501,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
     AppendMenuA(tools, MF_STRING, ID_M_LAB, "Signal Lab: watch a signal over time...");
     AppendMenuA(tools, MF_STRING, ID_M_ATLAS, "Frequency Atlas: what is where...");
+    AppendMenuA(tools, MF_STRING, ID_M_MORSE, "Morse Decoder (CW text)...");
     AppendMenuA(tools, MF_STRING, ID_M_ANTENNA, "Antenna Workshop: lengths and build guides...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_REPORT, "Device report...");
@@ -1513,7 +1518,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
 
     // Audio and the DSP thread come up before the first device so no samples are ever lost.
     openAudio();
-    A.pipe.setAudioSink([](const float* a, size_t n, int ch) { A.audio.write(a, n, ch); if (A.wav.active()) A.wav.write(a, n, ch); });
+    A.pipe.setAudioSink([](const float* a, size_t n, int ch) { A.audio.write(a, n, ch); morseFeed(a, n, ch); if (A.wav.active()) A.wav.write(a, n, ch); });
     A.pipe.setAudioEnabled(true);
     A.pipe.start();
 

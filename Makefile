@@ -42,10 +42,11 @@ test:
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_lab tests/test_lab.cpp src/journal/Journal.cpp src/dsp/LevelStats.cpp
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_wav tests/test_wav.cpp src/io/WavWriter.cpp -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_hints tests/test_hints.cpp
+	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_morse tests/test_morse.cpp src/dsp/MorseDecoder.cpp
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_antenna tests/test_antenna.cpp src/learn/Antenna.cpp
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_ssb tests/test_ssb.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_compare tests/test_compare.cpp src/dsp/SpectrumCompare.cpp
-	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab && ./build/test_wav && ./build/test_ssb && ./build/test_compare && ./build/test_antenna
+	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab && ./build/test_wav && ./build/test_ssb && ./build/test_compare && ./build/test_antenna && ./build/test_morse
 
 clean:
 	rm -rf build OpenRadioLab.exe

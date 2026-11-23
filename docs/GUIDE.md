@@ -192,3 +192,10 @@ If the dongle is an RTL-SDR Blog V4 (its USB name contains "V4") and you use the
 shortwave and amateur presets (40 m, 20 m, 40 m Morse) work. This is untested on real hardware by the author: please report what you see.
 Other dongles still stop at about 24 MHz; direct sampling is not built in. The Atlas has Morse segments for 40 m and 20 m that select CW mode automatically.
 HF needs a long wire antenna (see Antenna Workshop, guide 6) and is noisy indoors; expect to hear mostly hiss without one.
+
+## Morse Decoder (0.11.0)
+
+Tools, then *Morse Decoder (CW text)*. With Listen as set to CW (Morse), the window shows the letters it hears, the estimated speed in words per minute, and whether
+it hears a clear tone. It measures the length of each beep and gap, so it adapts to any speed. It reads clean, steady signals well; weak, fading or overlapping
+stations produce errors, and a * marks a pattern it could not read. *Copy text* puts the text on the clipboard. The decoder writes down what it hears and never says who is sending.
+It is checked against synthetic keyed tones (10 to 25 wpm, with noise) but not yet against real on-air signals.
