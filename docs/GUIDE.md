@@ -185,3 +185,10 @@ plus seven short build guides (dipole, V for weather satellites, ground plane, l
 disappeared or changed strength by 3 dB or more. Both must use the same centre frequency and sample rate. Useful for comparing two antennas, two gain settings or morning against evening.
 
 **Signal Lab** now refreshes on its own timer and says why it is not recording (no receiver, scanning, playback paused, Pause pressed).
+
+## HF on the RTL-SDR Blog V4 (0.10.1)
+
+If the dongle is an RTL-SDR Blog V4 (its USB name contains "V4") and you use the Blog's driver files, the tuning range now starts at 0.5 MHz, so the
+shortwave and amateur presets (40 m, 20 m, 40 m Morse) work. This is untested on real hardware by the author: please report what you see.
+Other dongles still stop at about 24 MHz; direct sampling is not built in. The Atlas has Morse segments for 40 m and 20 m that select CW mode automatically.
+HF needs a long wire antenna (see Antenna Workshop, guide 6) and is noisy indoors; expect to hear mostly hiss without one.

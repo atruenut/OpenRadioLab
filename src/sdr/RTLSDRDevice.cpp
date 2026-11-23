@@ -166,7 +166,7 @@ RTLSDRDevice::~RTLSDRDevice() { close(); }
 
 std::string RTLSDRDevice::description() const {
     std::string s = "RTL-SDR #" + std::to_string(index_);
-    if (dev_) s += std::string(" - tuner: ") + tunerName(tunerType_);
+    if (dev_) s += std::string(" - tuner: ") + tunerName(tunerType_) + (v4_ ? " (Blog V4, HF input)" : "");
     return s;
 }
 
@@ -185,6 +185,11 @@ bool RTLSDRDevice::open(std::string& error) {
     }
     dev_ = d;
     tunerType_ = g_api.get_tuner_type(dev_);
+    {
+        char m[256] = {0}, pr[256] = {0}, se[256] = {0};
+        v4_ = g_api.get_device_usb_strings((uint32_t)index_, m, pr, se) == 0 &&
+              (std::string(pr).find("V4") != std::string::npos);
+    }
 
     const int ng = g_api.get_tuner_gains(dev_, nullptr);
     gains_.clear();
@@ -267,6 +272,7 @@ void RTLSDRDevice::stop() {
 DeviceCaps RTLSDRDevice::caps() const {
     DeviceCaps c;
     tunerRange(tunerType_, c.minFreqHz, c.maxFreqHz);
+    if (v4_) c.minFreqHz = 500000u;           // V4 converts HF up internally; the Blog driver handles the offset
     c.sampleRates = {250000, 1024000, 1920000, 2048000, 2400000, 2560000};
     c.minGainDb = gains_.empty() ? 0.0 : gains_.front() / 10.0;
     c.maxGainDb = gains_.empty() ? 50.0 : gains_.back() / 10.0;

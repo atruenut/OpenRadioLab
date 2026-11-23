@@ -69,6 +69,7 @@ private:
     std::string label_;
     void* dev_ = nullptr;
     int tunerType_ = 0;
+    bool v4_ = false;                 // RTL-SDR Blog V4: built-in HF input (needs the Blog driver build)
     std::vector<int> gains_;          // tenths of a dB, as reported by the tuner
     uint32_t fc_ = 100000000, fs_ = 2048000;
 

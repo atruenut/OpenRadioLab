@@ -39,7 +39,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.10.0";
+const char* kAppName = "OpenRadio Lab 0.10.1";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -66,6 +66,9 @@ const Preset kPresets[] = {
     {"Remote controls / ISM (433.92 MHz)", 433.92e6},
     {"Aircraft transponders (1090 MHz)", 1090.0e6},
     {"AM broadcast (1.0 MHz) - needs HF capability", 1.0e6},
+    {"40 m amateur voice, LSB (7.150 MHz) - needs HF", 7.150e6},
+    {"20 m amateur voice, USB (14.200 MHz) - needs HF", 14.200e6},
+    {"40 m amateur Morse, CW (7.030 MHz) - needs HF", 7.030e6},
 };
 const double kSteps[] = {100e3, 200e3, 500e3, 1e6, 2e6, 10e6, 100.0, 500.0, 1e3, 5e3, 25e3};   // the small ones are for sideband and Morse
 const char* kStepNames[] = {"100 kHz", "200 kHz", "500 kHz", "1 MHz", "2 MHz", "10 MHz", "100 Hz (fine)", "500 Hz (fine)", "1 kHz", "5 kHz", "25 kHz"};
@@ -574,7 +577,7 @@ void tuneTo(double hz) {
                       formatFrequency(hz).c_str(), formatFrequency(A.caps.minFreqHz).c_str(),
                       formatFrequency(A.caps.maxFreqHz).c_str(),
                       (!A.dev->isSimulated() && hz < 24e6)
-                          ? " RTL-SDR dongles need 'direct sampling' or an upconverter for HF; that is not built in yet."
+                          ? " Most RTL-SDR dongles cannot tune below 24 MHz. The RTL-SDR Blog V4 can (it has an HF input), with the Blog's driver files."
                           : "");
         A.notice = b;
         updateInfo();

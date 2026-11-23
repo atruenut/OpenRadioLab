@@ -45,6 +45,8 @@ inline const Band* bandTable(size_t& count) {
         // ---- amateur radio
         {3.5e6,   4.0e6,   "80 m amateur band", 4, "Amateur radio. Mostly single-sideband voice (lower sideband by convention) plus Morse near the bottom of the band. Needs HF capability.", "Amateur radio", 0, kGen},
         {7.0e6,   7.3e6,   "40 m amateur band", 4, "Amateur radio. Single-sideband voice (lower sideband by convention) and Morse near 7.0 to 7.05 MHz. Needs HF capability.", "Amateur radio", 0, kGen},
+        {7.0e6,   7.04e6,  "40 m Morse (CW) segment", 5, "By long-standing habit the bottom of the band is Morse code. Tune the beeps to a comfortable pitch. Needs HF capability.", "Amateur radio", 0, kGen},
+        {14.0e6,  14.07e6, "20 m Morse (CW) segment", 5, "By long-standing habit the bottom of the band is Morse code. Needs HF capability.", "Amateur radio", 0, kGen},
         {14.0e6,  14.35e6, "20 m amateur band", 3, "Amateur radio, worldwide contacts. Mostly single-sideband (upper sideband by convention) and Morse near 14.0 to 14.07 MHz. Needs HF capability.", "Amateur radio", 0, kGen},
         {28.0e6,  29.7e6,  "10 m amateur band", 3, "Amateur radio. Single-sideband voice (upper sideband by convention). Needs HF capability.", "Amateur radio", 0, kGen},
         {50e6,    54e6,    "6 m amateur band", 1, "Amateur radio: FM and single-sideband voice, digital modes. Often quiet.", "Amateur radio", 0, kRac},
