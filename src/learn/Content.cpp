@@ -91,6 +91,21 @@ static const Lesson kLessons[] = {
 "This is general information and not legal advice. If you are unsure, check the ISED rules for your situation.\n"
 "Courtesy: never use what you hear to harm, track or bother people. Never interfere with aircraft or emergency radio. This program cannot transmit, and it will stay that way.",
 0, 0, "" },
+
+{ "11. Sideband voice and Morse code",
+"FM and AM are easy to hear: tune and listen. Amateur (ham) radio on the shortwave bands mostly uses SINGLE SIDEBAND (SSB). An AM signal is a carrier in the middle with a copy of the sound on each side (the sidebands). SSB throws away the carrier and one sideband, so the same voice takes about a quarter of the space and travels further on the same power.\n"
+"The catch: with no carrier, the receiver has to put one back. If the frequency is a little off, voices sound too high or too low, like Donald Duck. That is normal. Use the fine Step sizes (100 Hz, 500 Hz) and the up and down buttons to nudge until the voice sounds natural.\n"
+"UPPER sideband (USB) is the habit above 10 MHz, LOWER sideband (LSB) below 10 MHz. Pick the wrong one and the voice is garbled, so if it sounds wrong, switch.\n"
+"CW is Morse code: a plain carrier switched on and off. You hear it as beeps because the receiver adds its own 700 Hz tone. Tune until the pitch of the beeps is comfortable.\n"
+"Most of these signals live on HF (below 30 MHz), which an ordinary RTL-SDR cannot tune without direct sampling or an upconverter. The Frequency Atlas shows which bands use which mode. The program only decodes the sound. It does not name or identify stations.",
+0, 0, "" },
+
+{ "12. Better antennas and comparing results",
+"Open Tools, then Antenna Workshop. Type the frequency you care about and it gives the lengths to cut for a whip or a dipole, with step-by-step guides. This is the cheapest way to improve reception.\n"
+"To find out if a change really helped, use the Signal Lab. Press 'Take snapshot' with the old antenna, change the antenna (or move it, or change the gain), wait a few seconds, and press 'Take snapshot' again. The lab lists which signals appeared, disappeared or changed strength in dB.\n"
+"Keep the conditions fair: same place, same gain, same time of day if you can. Weak signals fade and drift on their own, so a difference of 1 or 2 dB means nothing. A change of 5 dB or more is real.\n"
+"Write what you did in the Experiment Journal so you can repeat it. Radio is an experimental hobby: change one thing at a time.",
+0, 0, "" },
 };
 
 static const Term kTerms[] = {
