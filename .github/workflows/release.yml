@@ -1,0 +1,45 @@
+name: release
+
+# Create a GitHub Release automatically when a version tag is pushed (or created from the web page):
+#   git tag v0.9.1 && git push origin v0.9.1
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchains
+        run: sudo apt-get update && sudo apt-get install -y g++ g++-mingw-w64-x86-64-win32 zip
+      - name: Run the portable tests
+        run: make test
+      - name: Build the Windows exe
+        run: make CROSS=x86_64-w64-mingw32- CXX=x86_64-w64-mingw32-g++-win32
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIR="OpenRadioLab-${VERSION}"
+          mkdir "$DIR"
+          cp OpenRadioLab.exe README.md LICENSE "$DIR"/
+          cp -r docs "$DIR"/
+          zip -r "${DIR}-windows-x64.zip" "$DIR"
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Beginner-first, receive-only SDR learning environment for Windows (GPL-2.0-only).
+
+            **Download `OpenRadioLab-*-windows-x64.zip`** (exe + manual + licence) or just `OpenRadioLab.exe`.
+            With no dongle it starts on the simulator. For a real RTL-SDR read `docs/getting-started.html`:
+            `rtlsdr.dll` and `libusb-1.0.dll` are separate projects and are not bundled.
+            The exe is not code-signed, so Windows SmartScreen may warn on first run.
+          files: |
+            OpenRadioLab-*-windows-x64.zip
+            OpenRadioLab.exe

@@ -262,7 +262,8 @@ struct LState {
     bool paused = false;
     ULONGLONG lastStats = 0;
     LevelStats stats;
-    std::string text;
+    std::string text, status;              // status: why nothing is being recorded right now (empty = recording)
+    unsigned long pushes = 0;
 } L;
 
 const double kDt = 0.1;                    // seconds between readings
@@ -276,6 +277,7 @@ void lUpdateText() {
     L.stats = analyseLevels(L.db, kDt, 6.0, L.noiseDb);
     char b[600];
     std::string t = "Watching " + formatFrequency(L.hz) + " (" + L.label + ")\r\n\r\n";
+    if (!L.status.empty()) t += "Not recording right now: " + L.status + "\r\n\r\n";
     if (L.db.empty()) t += "Waiting for data...";
     else {
         const LevelStats& s = L.stats;
@@ -413,8 +415,10 @@ LRESULT CALLBACK labProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             L.plot = CreateWindowExA(WS_EX_CLIENTEDGE, kPlotClass, "", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, h, (HMENU)(INT_PTR)L_PLOT, L.hi, nullptr);
             lLayout();
             lUpdateText();
+            SetTimer(h, 1, 250, nullptr);          // redraw on our own clock, whatever the main window is doing
             return 0;
         }
+        case WM_TIMER: if (w == 1) lUpdateText(); return 0;
         case WM_SIZE: lLayout(); return 0;
         case WM_GETMINMAXINFO: { auto* mm = (MINMAXINFO*)l; mm->ptMinTrackSize.x = LS(700); mm->ptMinTrackSize.y = LS(480); return 0; }
         case WM_COMMAND:
@@ -426,7 +430,7 @@ LRESULT CALLBACK labProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         case WM_CLOSE: DestroyWindow(h); return 0;
-        case WM_DESTROY: L.self = nullptr; L.plot = nullptr; if (L.big) { DeleteObject(L.big); L.big = nullptr; } return 0;
+        case WM_DESTROY: KillTimer(h, 1); L.self = nullptr; L.plot = nullptr; if (L.big) { DeleteObject(L.big); L.big = nullptr; } return 0;
     }
     return DefWindowProcA(h, m, w, l);
 }
@@ -465,11 +469,16 @@ void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> a
 
 bool signalLabOpen() { return L.self != nullptr; }
 
+void signalLabSetStatus(const std::string& why) { if (L.self) L.status = why; }
+
 void signalLabPush(double levelDb, double hz, const std::string& label, double noiseDb) {
     if (!L.self) return;
     if (std::fabs(hz - L.hz) > 500.0 || label != L.label) { L.db.clear(); L.hz = hz; L.label = label; }   // new frequency: start fresh
     L.noiseDb = noiseDb;
+    L.status = L.paused ? "paused with the Pause button" : "";
     if (L.paused) return;
+    if (!std::isfinite(levelDb)) { L.status = "the receiver reported no level"; return; }
+    ++L.pushes;
     L.db.push_back((float)levelDb);
     if (L.db.size() > kMaxSamples) L.db.erase(L.db.begin(), L.db.begin() + (L.db.size() - kMaxSamples));
     const ULONGLONG now = GetTickCount64();

@@ -28,6 +28,7 @@ void showJournal(HWND owner, HINSTANCE hi, HFONT font, const JournalHost& host, 
 // ---- Signal Lab: level of the signal being listened to, over time
 void showSignalLab(HWND owner, HINSTANCE hi, HFONT font, std::function<void()> addToJournal);
 bool signalLabOpen();
+void signalLabSetStatus(const std::string& why);   // shown in the lab when it is not recording
 // Feed one level reading (dBFS) about every 100 ms. Clears itself when the frequency changes.
 // noiseDb = the spectrum's background estimate (or 1e9 if unknown).
 void signalLabPush(double levelDb, double hz, const std::string& label, double noiseDb);

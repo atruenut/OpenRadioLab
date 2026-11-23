@@ -924,8 +924,10 @@ void onTimer() {
         if (nowMs - lastLab >= 100) {
             lastLab = nowMs;
             IqFileDevice* pl = player();
-            if (A.dev && A.dev->isRunning() && !A.scanning && !(pl && pl->paused()))
-                signalLabPush(A.dm.levelDb(), A.cfg.vfoHz, kModeShort[A.cfg.mode], 1e9);
+            if (!A.dev || !A.dev->isRunning()) signalLabSetStatus("no receiver is running");
+            else if (A.scanning) signalLabSetStatus("the FM scan is using the receiver");
+            else if (pl && pl->paused()) signalLabSetStatus("the recording playback is paused");
+            else signalLabPush(A.dm.levelDb(), A.cfg.vfoHz, kModeShort[A.cfg.mode], 1e9);
         }
     }
     updateStatus();
