@@ -40,7 +40,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.11.0";
+const char* kAppName = "OpenRadio Lab 0.11.1";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -98,6 +98,7 @@ struct Settings {
     int nfmBwKhz = 12, amBwKhz = 8;
     int audioDev = 0;
     std::string recDir;            // where the Save dialog starts for recordings
+    bool welcomed = false;         // the first-run welcome has been shown
 };
 
 struct App {
@@ -196,6 +197,7 @@ void loadSettings() {
     A.cfg.nfmBwKhz = clampi(geti("nfmbw", 12), 3, 30);
     A.cfg.amBwKhz = clampi(geti("ambw", 8), 3, 15);
     A.cfg.audioDev = std::max(0, geti("audiodev", 0));
+    A.cfg.welcomed = geti("welcomed", 0) != 0;
     char rd[MAX_PATH] = {0};
     GetPrivateProfileStringA("app", "recdir", "", rd, sizeof rd, p.c_str());
     A.cfg.recDir = rd;
@@ -214,7 +216,7 @@ void saveSettings() {
     puti("smooth", A.cfg.smoothPct); puti("range", A.cfg.rangeDb);
     puti("mode", A.cfg.mode); puti("volume", A.cfg.volume); puti("mute", A.cfg.mute); puti("stereo", A.cfg.stereo);
     puti("squelch", A.cfg.squelchPos); puti("nfmbw", A.cfg.nfmBwKhz); puti("ambw", A.cfg.amBwKhz);
-    puti("audiodev", A.cfg.audioDev);
+    puti("audiodev", A.cfg.audioDev); puti("welcomed", A.cfg.welcomed);
     WritePrivateProfileStringA("app", "recdir", A.cfg.recDir.c_str(), p.c_str());
 }
 
@@ -747,6 +749,49 @@ void showReport() {
     text = buildDeviceReport(A.usb, A.rtl);
     CreateWindowExA(0, kReportClass, "OpenRadio Lab - Device report", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                     CW_USEDEFAULT, CW_USEDEFAULT, S(760), S(520), A.hwnd, nullptr, A.hi, &text);
+}
+
+// Hover help for the controls, so nothing needs a manual to understand.
+void addTooltips() {
+    HWND tt = CreateWindowExA(WS_EX_TOPMOST, TOOLTIPS_CLASSA, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0, 0, 0, 0, A.hwnd, nullptr, A.hi, nullptr);
+    if (!tt) return;
+    SendMessageA(tt, TTM_SETMAXTIPWIDTH, 0, S(320));
+    SendMessageA(tt, TTM_SETDELAYTIME, TTDT_INITIAL, 400);
+    SendMessageA(tt, TTM_SETDELAYTIME, TTDT_AUTOPOP, 12000);
+    struct T { int id; const char* text; };
+    static const T tips[] = {
+        {ID_DEVICE, "Which radio to use. 'Simulator' is a pretend radio so you can learn without any hardware."},
+        {ID_RESCAN, "Look for plugged-in radios again."},
+        {ID_REPORT, "A plain-language report of what was found and what is missing. Handy when something does not work."},
+        {ID_PAUSE, "Freeze the picture so you can study it. The radio keeps running."},
+        {ID_HELP, "Open the getting-started manual."},
+        {ID_LEARN, "Short lessons and a dictionary of radio words."},
+        {ID_REC, "Record the raw radio signal to a file you can replay later, even without the radio."},
+        {ID_OPENREC, "Play back a recording made earlier."},
+        {ID_FREQ, "The frequency you are listening to. Type a number in MHz (for example 98.1) and press Go."},
+        {ID_GO, "Tune to the frequency typed in the box."},
+        {ID_DOWN, "Step down by the amount chosen in the Step list."},
+        {ID_UP, "Step up by the amount chosen in the Step list."},
+        {ID_STEP, "How far the up and down buttons move. Use the small steps (100 Hz to 5 kHz) for fine tuning voice and Morse."},
+        {ID_PRESET, "Jump straight to a popular place on the dial."},
+        {ID_SCAN, "Sweep the FM broadcast band and list the stations that can be heard."},
+        {ID_STATIONS, "Stations found by the scan. Pick one to listen."},
+        {ID_LISTEN, "How the sound is carried. FM for broadcast radio, AM for aircraft, USB/LSB for amateur voice, CW for Morse. The program picks for you unless Advanced is on."},
+        {ID_VOL, "Loudness of what you hear. Does not change the picture."},
+        {ID_MUTE, "Silence the sound."},
+        {ID_STEREO, "Play FM stereo when the station sends it. Weak stations sound better in mono."},
+        {ID_WAV, "Save the sound you hear as a WAV audio file."},
+        {ID_BW, "How wide a slice of the radio signal you listen to. Narrower cuts noise but can cut the voice."},
+        {ID_SQL, "Silences the sound when the signal is weak. Raise it until the hiss stops between transmissions."},
+        {ID_AUTOGAIN, "Let the radio choose its sensitivity. Leave on unless the picture looks crowded or empty."},
+        {ID_GAIN, "Radio sensitivity. Too low hides weak stations; too high makes strong ones create ghosts."},
+    };
+    for (const auto& t : tips) {
+        HWND c = GetDlgItem(A.hwnd, t.id);
+        if (!c) continue;
+        TOOLINFOA ti{}; ti.cbSize = sizeof ti; ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS; ti.hwnd = A.hwnd; ti.uId = (UINT_PTR)c; ti.lpszText = (LPSTR)t.text;
+        SendMessageA(tt, TTM_ADDTOOLA, 0, (LPARAM)&ti);
+    }
 }
 
 void showHelp() {
@@ -1381,6 +1426,7 @@ LRESULT CALLBACK mainProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             A.hwnd = h;
             HDC dc = GetDC(nullptr); A.dpi = GetDeviceCaps(dc, LOGPIXELSX); ReleaseDC(nullptr, dc);
             createControls();
+            addTooltips();
             layout();
             return 0;
         }
@@ -1522,6 +1568,18 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     A.pipe.setAudioEnabled(true);
     A.pipe.start();
 
+    if (!A.cfg.welcomed) {
+        A.cfg.welcomed = true;
+        MessageBoxA(w,
+            "Welcome to OpenRadio Lab!\n\n"
+            "This is a receive-only radio for learning. It cannot transmit.\n\n"
+            "- No radio plugged in? The Simulator works with no hardware.\n"
+            "- Press Scan to find FM stations, or pick one from 'Quick jump to'.\n"
+            "- Hover the mouse over any control to see what it does.\n"
+            "- Learn (top right) has short lessons; Tools has the Frequency Atlas and Antenna Workshop.\n\n"
+            "Simulated signals are always labelled as simulated.",
+            "Welcome", MB_OK | MB_ICONINFORMATION);
+    }
     rescan(true);                          // automatic detection + start
     SetTimer(w, TIMER_UI, 33, nullptr);
 

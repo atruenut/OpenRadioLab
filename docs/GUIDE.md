@@ -199,3 +199,8 @@ Tools, then *Morse Decoder (CW text)*. With Listen as set to CW (Morse), the win
 it hears a clear tone. It measures the length of each beep and gap, so it adapts to any speed. It reads clean, steady signals well; weak, fading or overlapping
 stations produce errors, and a * marks a pattern it could not read. *Copy text* puts the text on the clipboard. The decoder writes down what it hears and never says who is sending.
 It is checked against synthetic keyed tones (10 to 25 wpm, with noise) but not yet against real on-air signals.
+
+## Hover help and welcome (0.11.1)
+
+Hold the mouse over any button, list or slider in the main window for a short plain-language explanation. The first time the program runs it shows a short welcome message
+pointing at the Simulator, Scan, the Learn lessons and the Tools menu.
