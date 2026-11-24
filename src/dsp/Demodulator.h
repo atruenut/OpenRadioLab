@@ -11,6 +11,7 @@
 #pragma once
 
 #include "Filters.h"
+#include "RdsDecoder.h"
 #include "../Sync.h"
 
 #include <atomic>
@@ -45,12 +46,14 @@ public:
     double levelDb() const { return level_.load(); }       // channel power, dBFS
     bool squelchOpen() const { return open_.load(); }
     int outputChannels() const { return outCh_.load(); }          // of the most recent process() call
+    RdsInfo rdsInfo() const { return rds_.info(); }               // station name / text sent by the station (WFM only)
     bool stereoLocked() const { return stereoLock_.load(); }      // 19 kHz pilot found, decoding L/R
 
 private:
     void rebuild();
     void updateLevel(const std::vector<float>& i, const std::vector<float>& q);
 
+    RdsDecoder rds_;
     Mutex m_;
     double fs_ = 2048000.0, bw_ = 12000.0, off_ = 0.0, sqlDb_ = -120.0;
     Mode mode_ = Mode::WFM;

@@ -204,3 +204,12 @@ It is checked against synthetic keyed tones (10 to 25 wpm, with noise) but not y
 
 Hold the mouse over any button, list or slider in the main window for a short plain-language explanation. The first time the program runs it shows a short welcome message
 pointing at the Simulator, Scan, the Learn lessons and the Tools menu.
+
+## Station name and song text: RDS (0.12.0)
+
+Many FM stations send a small data stream along with the sound, called RDS (RBDS in North America). While you listen to wide FM, the information panel shows
+what the station sends: its name, a line of text (often the song or show), the programme type (Rock, Talk, News and so on) and its ID code. It can take several seconds to
+appear and weak signals often lose it, so expect it on strong stations only. Not every station sends it, and some send only a name.
+The text is exactly what the station transmitted; the program only reads it and never guesses. When you add a journal entry from a wide-FM station, the name and text are
+copied into the notes. With Advanced on, the panel also shows how many data blocks were read correctly or damaged, which is useful for reporting problems.
+The decoder is tested against synthetic RDS signals (through the whole receiver chain) but not yet against real broadcasts; the programme type names are the North American set.

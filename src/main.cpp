@@ -40,7 +40,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.11.1";
+const char* kAppName = "OpenRadio Lab 0.12.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -325,6 +325,27 @@ std::string detectionSummary() {
     return s;
 }
 
+// What the station itself is sending (RDS), as plain text; empty when not listening to wide FM.
+std::string rdsSection(bool forJournal = false) {
+    if (A.cfg.mode != 0 || !A.dev) return "";
+    const RdsInfo r = A.dm.rdsInfo();
+    char b[160];
+    if (r.locked && (!r.ps.empty() || !r.rt.empty())) {
+        std::string t = forJournal ? "Station data sent by the station (RDS): " : "Station data (RDS) - sent by the station itself\r\n";
+        std::string ps = r.ps; while (!ps.empty() && ps.back() == ' ') ps.pop_back();
+        const std::string nl = forJournal ? "; " : "\r\n";
+        if (!ps.empty()) t += (forJournal ? "name " : "  Name: ") + ps + nl;
+        if (!r.rt.empty()) t += (forJournal ? "text '" : "  Text (often the song or show): ") + r.rt + (forJournal ? "'" : "") + nl;
+        if (r.pty > 0) t += std::string(forJournal ? "type " : "  Programme type: ") + rdsPtyName(r.pty) + nl;
+        if (r.havePi && !forJournal) { std::snprintf(b, sizeof b, "  Station ID code: %04X\r\n", r.pi); t += b; }
+        return t;
+    }
+    if (forJournal) return "";
+    std::string t = "Station data (RDS): none received yet.\r\n  Many FM stations send their name and song text. Weak signals often lose it; it can take a few seconds to appear.\r\n";
+    if (A.cfg.advanced && (r.goodBlocks || r.badBlocks)) { std::snprintf(b, sizeof b, "  (%u data blocks read correctly, %u damaged)\r\n", r.goodBlocks, r.badBlocks); t += b; }
+    return t;
+}
+
 void updateInfo() {
     std::string t = deviceBanner() + "\r\n";
     const std::string det = detectionSummary();
@@ -358,6 +379,7 @@ void updateInfo() {
              "  Red marker: the frequency you are listening to. Click a peak to measure it; double-click to listen to it.\r\n"
              "  Hiss on an empty frequency is normal: that is the receiver amplifying background noise.\r\n";
     }
+    { const std::string rs = rdsSection(); if (!rs.empty()) t += "\r\n" + rs; }
     if (!A.view.observation().empty())
         t += "\r\nMeasurement (an estimate from this display, not an identification)\r\n  " + A.view.observation() + "\r\n";
     setText(ID_INFO, t);
@@ -981,6 +1003,15 @@ void onTimer() {
     A.view.addFrames(fr);
     updateSpecAvg(fr);
     morseSetCwMode(A.cfg.mode == 5);
+    {   // station data changes slowly; refresh the info panel only when the text actually changed
+        static ULONGLONG lastRdsMs = 0; static std::string lastRds;
+        const ULONGLONG nowMs = GetTickCount64();
+        if (nowMs - lastRdsMs >= 1000) {
+            lastRdsMs = nowMs;
+            const std::string rs = rdsSection();
+            if (rs != lastRds) { lastRds = rs; updateInfo(); }
+        }
+    }
     if (A.scanning) scanFeed(fr);
     if (A.recWas && !A.rec.active()) { stopRecording(true); updateInfo(); }
     if (A.wavWas && !A.wav.active()) { stopAudioCapture(true); updateInfo(); }
@@ -1211,6 +1242,7 @@ JournalEntry captureEntry() {
     else { std::snprintf(b, sizeof b, "%.0f dB", A.cfg.gainDb); e.gain = b; }
     e.levelDb = A.dm.levelDb();
     e.measurement = A.view.observation();
+    e.notes = rdsSection(true);                       // the station's own name and text, if it sent any
     e.recording = (A.dev && A.dev->isPlayback()) ? A.filePath : A.lastRec;
     return e;
 }

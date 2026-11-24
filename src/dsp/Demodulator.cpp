@@ -58,6 +58,7 @@ void Demodulator::rebuild() {
         ra_ = r1_ / Da_;
         fa_.configure(designLowpass(r1_, 15000.0, std::max(ra_ - 15000.0, 20000.0)), Da_, false);
         fb_.configure(designLowpass(r1_, 15000.0, std::max(ra_ - 15000.0, 20000.0)), Da_, false);
+        rds_.setRate(r1_);
         pilotBp_.bandpass(r1_, 19000.0, 20.0);
         notchS_.notch(r1_, 19000.0, 8.0);
         notchD_.notch(r1_, 19000.0, 8.0);
@@ -74,6 +75,7 @@ void Demodulator::rebuild() {
         fmScale_ = (float)(r1_ / (2.0 * kPi * 75000.0));                 // 75 kHz deviation = full scale
     } else {
         const double half = bw_ / 2.0;
+        rds_.reset();                                    // station data only exists on wide FM
         mixShift_ = 0; bfoHz_ = 0;
         if (mode_ == Mode::USB) { mixShift_ = half;  bfoHz_ = half; }          // passband sits just above the carrier
         if (mode_ == Mode::LSB) { mixShift_ = -half; bfoHz_ = -half; }         // ... or just below it
@@ -151,6 +153,7 @@ void Demodulator::process(const float* iq, size_t n, std::vector<float>& out) {
             const float im = s1q_[k] * pi - s1i_[k] * pq;
             const float d = std::atan2(im, re) * fmScale_;
             pi = s1i_[k]; pq = s1q_[k];
+            rds_.process(d);
 
             // Lock a PLL to the 19 kHz pilot (pilot = A sin(phi); detector output ~ sin(phi - p)).
             const double bp = pilotBp_.process(d);
@@ -195,7 +198,9 @@ void Demodulator::process(const float* iq, size_t n, std::vector<float>& out) {
         for (size_t k = 0; k < m; ++k) {
             const float re = s1i_[k] * pi + s1q_[k] * pq;
             const float im = s1q_[k] * pi - s1i_[k] * pq;
-            y += deemphAlpha_ * (std::atan2(im, re) * fmScale_ - y);
+            const float dm = std::atan2(im, re) * fmScale_;
+            rds_.process(dm);
+            y += deemphAlpha_ * (dm - y);
             au_[k] = y;
             pi = s1i_[k]; pq = s1q_[k];
         }
