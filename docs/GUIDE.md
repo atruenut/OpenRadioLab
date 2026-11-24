@@ -213,3 +213,11 @@ appear and weak signals often lose it, so expect it on strong stations only. Not
 The text is exactly what the station transmitted; the program only reads it and never guesses. When you add a journal entry from a wide-FM station, the name and text are
 copied into the notes. With Advanced on, the panel also shows how many data blocks were read correctly or damaged, which is useful for reporting problems.
 The decoder is tested against synthetic RDS signals (through the whole receiver chain) but not yet against real broadcasts; the programme type names are the North American set.
+
+## Station panel and favourites (0.13.0)
+
+**Station panel.** While you listen to wide FM, the bottom of the window is split: the explanation on the left and a *Station data* card on the right
+(name, text, programme type, ID code). The panel no longer jumps back to the top while you scroll it; text only refreshes when it actually changes.
+
+**Favourites.** Tools, then *Save this station as a favourite* stores the frequency and mode under the station's own name if it sent one (otherwise the frequency).
+Favourites appear at the bottom of the *Quick jump to* list marked with a star. To delete one, tune to it and choose *Remove this station from favourites*. Up to 40 are kept in the settings file.

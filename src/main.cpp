@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <map>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -40,7 +41,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.12.0";
+const char* kAppName = "OpenRadio Lab 0.13.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -50,8 +51,8 @@ enum {
     ID_LISTEN, ID_VOL, ID_MUTE, ID_STEREO, ID_WAV, ID_BW, ID_SQL,
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
-    ID_VIEW, ID_INFO, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE,
+    ID_VIEW, ID_INFO, ID_STATION, ID_STATUS,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -168,6 +169,7 @@ std::string settingsPath() {
     return d + "\\settings.ini";
 }
 
+void loadFavs(const std::string& path);
 void loadSettings() {
     const std::string p = settingsPath();
     auto geti = [&](const char* k, int d) { return (int)GetPrivateProfileIntA("app", k, d, p.c_str()); };
@@ -198,9 +200,39 @@ void loadSettings() {
     A.cfg.amBwKhz = clampi(geti("ambw", 8), 3, 15);
     A.cfg.audioDev = std::max(0, geti("audiodev", 0));
     A.cfg.welcomed = geti("welcomed", 0) != 0;
+    loadFavs(p);
     char rd[MAX_PATH] = {0};
     GetPrivateProfileStringA("app", "recdir", "", rd, sizeof rd, p.c_str());
     A.cfg.recDir = rd;
+}
+
+// Favourite stations: saved in the settings file as fav0, fav1, ... = "hz|mode|name".
+struct Fav { double hz = 0; int mode = 0; std::string name; };
+std::vector<Fav> g_favs;
+const size_t kMaxFavs = 40;
+
+void loadFavs(const std::string& path) {
+    g_favs.clear();
+    for (size_t i = 0; i < kMaxFavs; ++i) {
+        char key[16], v[256] = {0};
+        std::snprintf(key, sizeof key, "fav%zu", i);
+        GetPrivateProfileStringA("favs", key, "", v, sizeof v, path.c_str());
+        if (!v[0]) continue;
+        Fav f; const std::string t = v;
+        const size_t a = t.find('|'), b = a == std::string::npos ? a : t.find('|', a + 1);
+        if (b == std::string::npos) continue;
+        f.hz = std::atof(t.substr(0, a).c_str()); f.mode = std::max(0, std::min(5, std::atoi(t.substr(a + 1, b - a - 1).c_str()))); f.name = t.substr(b + 1);
+        if (f.hz > 1e4) g_favs.push_back(f);
+    }
+}
+void saveFavs(const std::string& path) {
+    WritePrivateProfileStringA("favs", nullptr, nullptr, path.c_str());          // clear the section, then rewrite it
+    for (size_t i = 0; i < g_favs.size(); ++i) {
+        char key[16], v[300];
+        std::snprintf(key, sizeof key, "fav%zu", i);
+        std::snprintf(v, sizeof v, "%.0f|%d|%s", g_favs[i].hz, g_favs[i].mode, g_favs[i].name.c_str());
+        WritePrivateProfileStringA("favs", key, v, path.c_str());
+    }
 }
 
 void saveSettings() {
@@ -217,6 +249,7 @@ void saveSettings() {
     puti("mode", A.cfg.mode); puti("volume", A.cfg.volume); puti("mute", A.cfg.mute); puti("stereo", A.cfg.stereo);
     puti("squelch", A.cfg.squelchPos); puti("nfmbw", A.cfg.nfmBwKhz); puti("ambw", A.cfg.amBwKhz);
     puti("audiodev", A.cfg.audioDev); puti("welcomed", A.cfg.welcomed);
+    saveFavs(p);
     WritePrivateProfileStringA("app", "recdir", A.cfg.recDir.c_str(), p.c_str());
 }
 
@@ -232,6 +265,21 @@ void cbAdd(int id, const std::string& s) { SendMessageA(H(id), CB_ADDSTRING, 0, 
 void cbSel(int id, int i) { SendMessageA(H(id), CB_SETCURSEL, i, 0); }
 int cbGet(int id) { return (int)SendMessageA(H(id), CB_GETCURSEL, 0, 0); }
 void setText(int id, const std::string& s) { SetWindowTextA(H(id), s.c_str()); }
+// For the read-only text panels: do nothing if the text is unchanged, and keep the reader's scroll position when it does change.
+void setPanelText(int id, const std::string& s) {
+    static std::map<int, std::string> last;
+    auto it = last.find(id);
+    if (it != last.end() && it->second == s) return;
+    last[id] = s;
+    HWND w = H(id);
+    const int first = (int)SendMessageA(w, EM_GETFIRSTVISIBLELINE, 0, 0);
+    SendMessageA(w, WM_SETREDRAW, FALSE, 0);
+    SetWindowTextA(w, s.c_str());
+    const int now = (int)SendMessageA(w, EM_GETFIRSTVISIBLELINE, 0, 0);
+    if (first > now) SendMessageA(w, EM_LINESCROLL, 0, first - now);
+    SendMessageA(w, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(w, nullptr, TRUE);
+}
 int tbGet(int id) { return (int)SendMessageA(H(id), TBM_GETPOS, 0, 0); }
 void tbSet(int id, int v) { SendMessageA(H(id), TBM_SETPOS, TRUE, v); }
 void tbRange(int id, int lo, int hi) { SendMessageA(H(id), TBM_SETRANGE, TRUE, MAKELPARAM(lo, hi)); }
@@ -346,6 +394,27 @@ std::string rdsSection(bool forJournal = false) {
     return t;
 }
 
+bool stationPanelWanted() { return A.cfg.mode == 0 && A.dev; }
+
+// The station card: what the station says about itself, laid out to read at a glance.
+void updateStation() {
+    if (!stationPanelWanted()) return;
+    const RdsInfo r = A.dm.rdsInfo();
+    std::string t = "STATION DATA (RDS)\r\nSent by the station itself.\r\n\r\n";
+    char b[160];
+    if (r.locked && (!r.ps.empty() || !r.rt.empty())) {
+        std::string ps = r.ps; while (!ps.empty() && ps.back() == ' ') ps.pop_back();
+        t += "Name\r\n  " + (ps.empty() ? std::string("(not received yet)") : ps) + "\r\n\r\n";
+        t += "Text (often the song or show)\r\n  " + (r.rt.empty() ? std::string("(not received yet)") : r.rt) + "\r\n\r\n";
+        t += std::string("Programme type\r\n  ") + (r.pty > 0 ? rdsPtyName(r.pty) : "not stated") + "\r\n\r\n";
+        if (r.havePi) { std::snprintf(b, sizeof b, "Station ID code\r\n  %04X\r\n", r.pi); t += b; }
+    } else {
+        t += "None received yet.\r\n\r\nMany FM stations send their name and song text. It can take a few seconds to appear, and weak signals often lose it.\r\n";
+        if (A.cfg.advanced && (r.goodBlocks || r.badBlocks)) { std::snprintf(b, sizeof b, "\r\n(%u data blocks read correctly, %u damaged)\r\n", r.goodBlocks, r.badBlocks); t += b; }
+    }
+    setPanelText(ID_STATION, t);
+}
+
 void updateInfo() {
     std::string t = deviceBanner() + "\r\n";
     const std::string det = detectionSummary();
@@ -379,10 +448,9 @@ void updateInfo() {
              "  Red marker: the frequency you are listening to. Click a peak to measure it; double-click to listen to it.\r\n"
              "  Hiss on an empty frequency is normal: that is the receiver amplifying background noise.\r\n";
     }
-    { const std::string rs = rdsSection(); if (!rs.empty()) t += "\r\n" + rs; }
     if (!A.view.observation().empty())
         t += "\r\nMeasurement (an estimate from this display, not an identification)\r\n  " + A.view.observation() + "\r\n";
-    setText(ID_INFO, t);
+    setPanelText(ID_INFO, t);
 }
 
 void applyGain() {
@@ -948,8 +1016,12 @@ void layout() {
     RECT sb; SendMessageA(H(ID_STATUS), WM_SIZE, 0, 0);
     GetWindowRect(H(ID_STATUS), &sb);
     const int sbH = sb.bottom - sb.top;
-    const int infoH = S(adv ? 100 : 128);
-    place(ID_INFO, m, Hh - sbH - infoH - m, W - 2 * m, infoH);
+    const int infoH = S(adv ? 124 : 150);
+    const bool st = stationPanelWanted();
+    const int stW = st ? std::max(S(300), (W - 2 * m) * 34 / 100) : 0;
+    place(ID_INFO, m, Hh - sbH - infoH - m, W - 2 * m - (st ? stW + gap : 0), infoH);
+    ShowWindow(H(ID_STATION), st ? SW_SHOW : SW_HIDE);
+    if (st) place(ID_STATION, W - m - stW, Hh - sbH - infoH - m, stW, infoH);
     place(ID_VIEW, m, y, W - 2 * m, std::max(S(120), Hh - sbH - infoH - m * 2 - y));
 }
 
@@ -1003,14 +1075,11 @@ void onTimer() {
     A.view.addFrames(fr);
     updateSpecAvg(fr);
     morseSetCwMode(A.cfg.mode == 5);
-    {   // station data changes slowly; refresh the info panel only when the text actually changed
-        static ULONGLONG lastRdsMs = 0; static std::string lastRds;
+    {   // station data changes slowly; refresh its card about once a second, and re-lay-out when the card appears or goes
+        static ULONGLONG lastRdsMs = 0; static bool shown = false;
         const ULONGLONG nowMs = GetTickCount64();
-        if (nowMs - lastRdsMs >= 1000) {
-            lastRdsMs = nowMs;
-            const std::string rs = rdsSection();
-            if (rs != lastRds) { lastRds = rs; updateInfo(); }
-        }
+        if (stationPanelWanted() != shown) { shown = stationPanelWanted(); layout(); updateStation(); }
+        else if (nowMs - lastRdsMs >= 1000) { lastRdsMs = nowMs; updateStation(); }
     }
     if (A.scanning) scanFeed(fr);
     if (A.recWas && !A.rec.active()) { stopRecording(true); updateInfo(); }
@@ -1057,6 +1126,41 @@ void openAudio() {
     std::string err;
     A.audioNotice.clear();
     if (!A.audio.open(A.cfg.audioDev, err)) A.audioNotice = err + " (the display still works; check Audio out in Advanced mode)";
+}
+
+const size_t kNumPresets = sizeof(kPresets) / sizeof(kPresets[0]);
+void fillPresets() {
+    SendMessageA(H(ID_PRESET), CB_RESETCONTENT, 0, 0);
+    for (auto& p : kPresets) cbAdd(ID_PRESET, p.label);
+    for (auto& f : g_favs) cbAdd(ID_PRESET, "* " + f.name + " (" + formatFrequency(f.hz) + ")");
+    cbSel(ID_PRESET, 0);
+}
+// Name a new favourite after what the station says it is, else by its frequency.
+void addFavourite() {
+    for (auto& f : g_favs) if (std::fabs(f.hz - A.cfg.vfoHz) < 5e3) { A.notice = "That frequency is already in your favourites."; updateInfo(); return; }
+    if (g_favs.size() >= kMaxFavs) { A.notice = "The favourites list is full (40). Remove one first."; updateInfo(); return; }
+    Fav f; f.hz = A.cfg.vfoHz; f.mode = A.cfg.mode; f.name = formatFrequency(f.hz);
+    if (A.cfg.mode == 0) {
+        std::string ps = A.dm.rdsInfo().ps;
+        while (!ps.empty() && ps.back() == ' ') ps.pop_back();
+        if (!ps.empty()) f.name = ps;
+    }
+    for (char& c : f.name) if (c == '|' || (unsigned char)c < 32) c = ' ';
+    g_favs.push_back(f);
+    fillPresets();
+    A.notice = "Saved " + formatFrequency(f.hz) + " as a favourite ('" + f.name + "'). Find it in the Quick jump list, marked with *.";
+    updateInfo();
+}
+void removeFavourite() {
+    for (size_t i = 0; i < g_favs.size(); ++i)
+        if (std::fabs(g_favs[i].hz - A.cfg.vfoHz) < 5e3) {
+            A.notice = "Removed favourite '" + g_favs[i].name + "'.";
+            g_favs.erase(g_favs.begin() + i);
+            fillPresets(); updateInfo();
+            return;
+        }
+    A.notice = "The frequency you are listening to is not in your favourites. Tune to the favourite you want to remove first.";
+    updateInfo();
 }
 
 void createControls() {
@@ -1129,14 +1233,14 @@ void createControls() {
     mk(TRACKBAR_CLASSA, "", TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, ID_RANGE);
 
     mk("EDIT", "", ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL, ID_INFO, WS_EX_CLIENTEDGE);
+    mk("EDIT", "", ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL, ID_STATION, WS_EX_CLIENTEDGE);
     mk(STATUSCLASSNAMEA, "", SBARS_SIZEGRIP, ID_STATUS);
     int parts[5] = {S(200), S(540), S(780), S(1090), -1};
     SendMessageA(H(ID_STATUS), SB_SETPARTS, 5, (LPARAM)parts);
 
     A.view.create(A.hwnd, A.hi, ID_VIEW);
 
-    for (auto& p : kPresets) cbAdd(ID_PRESET, p.label);
-    cbSel(ID_PRESET, 0);
+    fillPresets();
     fillStations();
     for (auto n : kStepNames) cbAdd(ID_STEP, n);
     cbSel(ID_STEP, A.cfg.stepIdx);
@@ -1377,6 +1481,8 @@ void onCommand(int id, int code) {
         case ID_M_NEWENTRY: openJournal(true); break;
         case ID_M_LAB: openSignalLab(); break;
         case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
+        case ID_M_FAVADD: addFavourite(); break;
+        case ID_M_FAVDEL: removeFavourite(); break;
         case ID_M_MORSE: showMorseWindow(A.hwnd, A.hi, A.font); break;
         case ID_M_ANTENNA: showAntennaWorkshop(A.hwnd, A.hi, A.font, A.cfg.vfoHz); break;
         case ID_M_EXIT: SendMessageA(A.hwnd, WM_CLOSE, 0, 0); break;
@@ -1415,7 +1521,12 @@ void onCommand(int id, int code) {
         case ID_PRESET:
             if (code == CBN_SELCHANGE) {
                 const int i = cbGet(ID_PRESET);
-                if (i > 0) tuneTo(kPresets[i].hz);
+                if (i > 0 && (size_t)i < kNumPresets) tuneTo(kPresets[i].hz);
+                else if ((size_t)i >= kNumPresets && (size_t)i - kNumPresets < g_favs.size()) {
+                    const Fav f = g_favs[(size_t)i - kNumPresets];
+                    tuneTo(f.hz);
+                    if (f.mode != A.cfg.mode) { setModeIndex(f.mode, true); updateInfo(); }
+                }
                 cbSel(ID_PRESET, 0);
             }
             break;
@@ -1575,6 +1686,9 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(file, MF_STRING, ID_M_LIVE, "Back to live radio");
     AppendMenuA(file, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(file, MF_STRING, ID_M_EXIT, "Exit");
+    AppendMenuA(tools, MF_STRING, ID_M_FAVADD, "Save this station as a favourite");
+    AppendMenuA(tools, MF_STRING, ID_M_FAVDEL, "Remove this station from favourites");
+    AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_M_JOURNAL, "Experiment Journal...");
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
     AppendMenuA(tools, MF_STRING, ID_M_LAB, "Signal Lab: watch a signal over time...");
