@@ -23,6 +23,13 @@ struct DiscoverHost {
     std::function<void(const DiscoveryRow&)> favourite;
     std::function<void(bool on)> autoListen;
     std::function<void()> addToJournal;
+    std::function<void()> saveScan;                        // choose a file and save the list
+    std::function<void()> loadScan;                        // choose a file and load a list
+    std::function<void()> exportCsv;                       // for a spreadsheet
+    std::function<void()> clearScan;                       // start with an empty list
+    std::function<void(double hz, const std::string& note)> setNote;
+    std::function<void(bool on)> recordClips;              // auto-listen saves a sound clip of each activity
+    std::function<void(bool on)> beepOnNew;                // a short beep when a sweep finds a signal not in the loaded scan
 };
 
 bool registerDiscoverClass(HINSTANCE hi);

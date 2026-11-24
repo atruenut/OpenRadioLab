@@ -8,6 +8,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace orl {
 
@@ -29,20 +30,30 @@ struct DiscoveryRow {
     std::string where;              // "Marine VHF" or similar
     std::string what;               // plain-language observation (never an identification)
     double score = 0;
+    long long firstT = 0, lastT = 0;   // when it was first / last seen (seconds since 1970)
+    bool isNew = false;                // first seen in this session, when an earlier saved scan exists to compare with
+    std::string note;                  // the user's own label
 };
 
 class DiscoveryTable {
 public:
-    void clear() { e_.clear(); passes_ = 0; }
+    void clear() { e_.clear(); passes_ = 0; hadBaseline_ = false; }
     void addSignals(const std::vector<FoundSignal>& s);   // from one swept range during the current pass
     void endPass() { ++passes_; }
     int passes() const { return passes_; }
     std::vector<DiscoveryRow> rows() const;               // best first
+    size_t size() const { return e_.size(); }
+    bool setNote(double hz, const std::string& note);     // label the signal nearest hz (within 1 kHz)
+    // Saved scans (plain text, one signal per line). load() replaces the table; signals found afterwards that were not in it are marked new.
+    bool save(const std::string& path) const;
+    bool load(const std::string& path);
+    std::string toCsv() const;                            // for spreadsheets
 
 private:
-    struct E { double hz = 0, width = 0, maxSnr = 0, lastSnr = 0; int seen = 0, lastPass = -1; };
+    struct E { double hz = 0, width = 0, maxSnr = 0, lastSnr = 0; int seen = 0, lastPass = -1; long long firstT = 0, lastT = 0; bool loaded = false; std::string note; };
     std::vector<E> e_;
     int passes_ = 0;
+    bool hadBaseline_ = false;
 };
 
 // Describe a signal from where it is and how wide it is.

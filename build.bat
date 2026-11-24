@@ -15,7 +15,7 @@ if not exist build\src\dsp mkdir build\src\dsp
 if not exist build\src\audio mkdir build\src\audio
 
 set CXXFLAGS=-std=gnu++17 -O2 -Wall -Wextra
-set FILES=src\main.cpp src\ui\SpectrumView.cpp src\ui\LearnWindow.cpp src\learn\Content.cpp src\io\IqFile.cpp src\io\WavWriter.cpp src\ui\LabWindows.cpp src\ui\AtlasWindow.cpp src\ui\AntennaWindow.cpp src\ui\DiscoverWindow.cpp src\dsp\Survey.cpp src\dsp\AdsbDecoder.cpp src\ui\AdsbWindow.cpp src\ui\MorseWindow.cpp src\dsp\MorseDecoder.cpp src\learn\Antenna.cpp src\dsp\SpectrumCompare.cpp src\journal\Journal.cpp src\dsp\LevelStats.cpp src\audio\AudioOutput.cpp src\sdr\SimulatedSDR.cpp src\sdr\RTLSDRDevice.cpp src\sdr\DeviceDetect.cpp src\dsp\FFT.cpp src\dsp\Filters.cpp src\dsp\BandScanner.cpp src\dsp\Demodulator.cpp src\dsp\RdsDecoder.cpp src\dsp\DspPipeline.cpp src\dsp\SpectrumProcessor.cpp
+set FILES=src\main.cpp src\ui\SpectrumView.cpp src\ui\LearnWindow.cpp src\learn\Content.cpp src\io\IqFile.cpp src\io\WavWriter.cpp src\ui\LabWindows.cpp src\ui\AtlasWindow.cpp src\ui\AntennaWindow.cpp src\ui\DiscoverWindow.cpp src\dsp\Survey.cpp src\dsp\AdsbDecoder.cpp src\ui\AdsbWindow.cpp src\ui\FavouritesWindow.cpp src\ui\MorseWindow.cpp src\dsp\MorseDecoder.cpp src\learn\Antenna.cpp src\dsp\SpectrumCompare.cpp src\journal\Journal.cpp src\dsp\LevelStats.cpp src\audio\AudioOutput.cpp src\sdr\SimulatedSDR.cpp src\sdr\RTLSDRDevice.cpp src\sdr\DeviceDetect.cpp src\dsp\FFT.cpp src\dsp\Filters.cpp src\dsp\BandScanner.cpp src\dsp\Demodulator.cpp src\dsp\RdsDecoder.cpp src\dsp\DspPipeline.cpp src\dsp\SpectrumProcessor.cpp
 
 echo Compiling resources...
 pushd resources

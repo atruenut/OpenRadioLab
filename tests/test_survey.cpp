@@ -85,6 +85,34 @@ int main() {
     auto qh = surveyRanges(true, 24e6, 960e6);
     CHECK(qh.size() < q.size(), "range limits ignored");
     for (auto& r : f) CHECK(!(r.lo < 100e6 && r.hi > 90e6 && r.hi <= 108e6 && r.lo >= 87.8e6), "FM band not skipped");
+    std::printf("[Saving and loading a scan]\n");
+    {
+        DiscoveryTable t;
+        FoundSignal a; a.hz = 146.52e6; a.widthHz = 12e3; a.snrDb = 25; a.levelDb = -45;
+        FoundSignal b; b.hz = 162.55e6; b.widthHz = 10e3; b.snrDb = 30; b.levelDb = -40;
+        t.addSignals({a, b}); t.endPass(); t.addSignals({a}); t.endPass();
+        CHECK(t.setNote(162.5504e6, "Weather\tradio"), "note not set");
+        CHECK(!t.setNote(100e6, "x"), "note set on nothing");
+        const std::string path = "build/_disc_test.tsv";
+        CHECK(t.save(path), "save failed");
+        DiscoveryTable u;
+        CHECK(u.load(path), "load failed");
+        auto rs = u.rows();
+        CHECK(rs.size() == 2 && u.passes() == 2, "loaded %zu rows, %d passes", rs.size(), u.passes());
+        bool wx = false; for (auto& r : rs) { if (std::fabs(r.hz - 162.55e6) < 1) wx = r.note == "Weather radio" && r.seen == 1; CHECK(!r.isNew && !r.activeNow, "loaded row marked new/active"); }
+        CHECK(wx, "note or seen count lost");
+        FoundSignal c; c.hz = 156.8e6; c.widthHz = 12e3; c.snrDb = 20; c.levelDb = -50;
+        u.addSignals({a, c}); u.endPass();                      // one known, one new
+        int nw = 0, act = 0; for (auto& r : u.rows()) { nw += r.isNew; act += r.activeNow; }
+        CHECK(nw == 1, "%d new, want 1", nw);
+        CHECK(act == 2, "%d active, want 2", act);
+        const std::string csv = u.toCsv();
+        CHECK(csv.find("156.8000") != std::string::npos && csv.find("Weather radio") != std::string::npos, "csv incomplete");
+        DiscoveryTable v; CHECK(!v.load("build/does_not_exist.tsv"), "loaded a missing file");
+        std::FILE* g = std::fopen("build/_bad.tsv", "wb"); std::fputs("hello\n", g); std::fclose(g);
+        CHECK(!v.load("build/_bad.tsv"), "loaded junk");
+        std::remove(path.c_str()); std::remove("build/_bad.tsv");
+    }
     std::printf("%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL SURVEY TESTS PASSED", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
 }

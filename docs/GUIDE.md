@@ -251,3 +251,21 @@ A new aircraft first shows only its address; the callsign, height and speed arri
 Damaged messages are detected with the built-in 24-bit check and ignored, so what is shown is what the aircraft reported. It is an observation, not a verification: the list shows what each aircraft says about itself.
 
 Limits: the decoder reads the standard extended squitter (DF17) messages only; it does not do the older interrogation replies. It is tested against published real message examples and against synthetic over-the-air signals, but has not yet been tried on a real antenna. The simulator has no aircraft, so tracking needs the RTL-SDR.
+
+## Discover grows up: sorting, saved scans, favourites window (0.16.0)
+
+**Sorting.** Click any column heading in the Discover list to sort by it; click again to reverse. Strength, Seen, Width and the dates start with the biggest or newest first. The plain "best first" order is what you see until you click a heading.
+Two tick boxes narrow the list: *Only new since last scan* and *Hide wide blocks (TV, cellular)*.
+
+**Saved scans.** The list is saved automatically when a sweep pass ends, when you stop, and when you close the program, and it comes back the next time you open Discover (file: `discovery.tsv` next to your settings).
+New sweeps *add to* what is already there instead of starting over, so the list becomes a picture of your location over time. Each signal remembers when it was first and last seen.
+*Save scan...* and *Open scan...* keep named scans (for example one per place or per day); *Export to CSV...* writes a spreadsheet file; *Clear list* empties the list and the automatic save.
+
+**What is new?** After a scan has been loaded, any signal that was not in it is marked **NEW** in the Seen column and written to the log ("NEW signal: 462.675 MHz..."). Tick *Beep on a new signal* to be told while you do something else; leave a quick sweep running and come back later.
+Because ratios like 3/10 now cover many sweeps, old history counts for less than new sweeps (at most the last 20 passes' worth are kept).
+
+**Notes.** Select a signal, type in *Your note* (for example "Ferry dispatch?") and press *Save note*. Notes are saved with the scan and shown in the list and the CSV file.
+
+**Sound clips.** With *Auto-listen saves a sound clip* ticked, each time Auto-listen stops on activity it saves what it heard as a WAV file in your recordings folder (or `clips` next to the settings). The log says where. Calls that sound like private conversations are not for sharing.
+
+**Favourites window.** Favourites are no longer mixed into the Quick jump list. Tools, then *Favourite stations (manage)* opens a window where you can sort, rename, reorder, remove and tune to them. Double-click tunes to one; *Add what I am listening to now* adds the current station.

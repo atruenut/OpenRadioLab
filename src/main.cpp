@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <map>
+#include <set>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -34,6 +35,7 @@
 #include "ui/AntennaWindow.h"
 #include "ui/MorseWindow.h"
 #include "ui/AdsbWindow.h"
+#include "ui/FavouritesWindow.h"
 #include "dsp/AdsbDecoder.h"
 #include "ui/DiscoverWindow.h"
 #include "dsp/Survey.h"
@@ -45,7 +47,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.15.0";
+const char* kAppName = "OpenRadio Lab 0.16.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -56,7 +58,7 @@ enum {
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATION, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL, ID_M_DISCOVER, ID_M_ADSB,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_DISCOVER, ID_M_ADSB, ID_M_FAVLIST,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -158,6 +160,9 @@ void stopRecording(bool ask = false);
 void stopAudioCapture(bool ask = false);
 void layout();
 void fillPresets();
+void addFavourite();
+void openFavourites();
+std::string pickFile(bool save, const char* filter, const char* ext, const char* title, const std::string& initial);
 void openJournal(bool);
 void stopSurvey(const std::string& why);
 bool surveyRunning();
@@ -809,9 +814,18 @@ struct DiscoverState {
     ULONGLONG t0 = 0, holdStart = 0, quietSince = 0, minHold = 0;
     double mn = 1e9, mx = -1e9;
     std::vector<DiscoveryRow> cand; std::map<long, double> base;
+    bool recClips = false, clipOn = false, beepNew = false; std::set<long> told;
 } D;
 
 bool surveyRunning() { return D.sweeping; }
+void autosaveDiscovery();
+void stopClip();
+std::string discoveryPath() {
+    std::string p = settingsPath();
+    const size_t k = p.find_last_of("\\/");
+    return (k == std::string::npos ? std::string() : p.substr(0, k + 1)) + "discovery.tsv";
+}
+void autosaveDiscovery() { if (D.table.size()) D.table.save(discoveryPath()); }
 void discoverPush() { discoverUpdate(D.table.rows(), D.status, D.sweeping, D.autoOn, D.log); }
 
 void logActivity(const std::string& s) {
@@ -832,12 +846,47 @@ void setAutoListen(bool on) {
         D.status = "Auto-listen is hopping between the channels found. It stops where it hears activity.";
         logActivity("Auto-listen started.");
     } else {
+        stopClip();
         D.autoOn = false;
         A.dm.setMute(A.cfg.mute);
         D.status = "Auto-listen stopped.";
         logActivity("Auto-listen stopped.");
     }
     discoverPush();
+}
+
+// Say so (in the log) when a sweep finds a signal that was not in the scan we started from.
+void announceNew() {
+    int n = 0;
+    for (auto& r : D.table.rows()) {
+        if (!r.isNew) continue;
+        const long key = std::lround(r.hz / 1000.0);
+        if (!D.told.insert(key).second) continue;
+        char b[160]; std::snprintf(b, sizeof b, "NEW signal: %s (%s, %.0f dB above the noise)", formatFrequency(r.hz).c_str(), r.where.c_str(), r.snrDb);
+        logActivity(b); ++n;
+    }
+    if (n && D.beepNew) MessageBeep(MB_OK);
+}
+
+void stopClip() {
+    if (!D.clipOn) return;
+    D.clipOn = false;
+    const std::string path = A.wav.path(); const double secs = A.wav.seconds();
+    A.wav.stop();
+    char b[64]; std::snprintf(b, sizeof b, "  ...clip saved (%.0f s): ", secs);
+    D.log += std::string(b) + path + "\r\n";
+}
+
+void startClip(double hz) {
+    if (!D.recClips || D.clipOn || A.wav.active()) return;
+    std::string dir = A.cfg.recDir;
+    if (dir.empty()) { const std::string p = settingsPath(); const size_t k = p.find_last_of("\\/"); dir = (k == std::string::npos ? std::string(".") : p.substr(0, k)) + "\\clips"; }
+    CreateDirectoryA(dir.c_str(), nullptr);
+    SYSTEMTIME t; GetLocalTime(&t); char f[MAX_PATH];
+    std::snprintf(f, sizeof f, "%s\\clip_%.3fMHz_%04d-%02d-%02d_%02d%02d%02d.wav", dir.c_str(), hz / 1e6, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    std::string err;
+    if (A.wav.start(f, (uint32_t)Demodulator::kAudioRate, 1ull << 25, err)) D.clipOn = true;
+    else D.log += "  (could not save a clip: " + err + ")\r\n";
 }
 
 void autoTick() {
@@ -872,6 +921,7 @@ void autoTick() {
                 D.ast = 3; D.holdStart = now; D.quietSince = 0; D.minHold = steady && !jump ? 10000 : 4000;
                 A.dm.setMute(A.cfg.mute);
                 logActivity("Activity on " + formatFrequency(r.hz) + " (" + r.where + ")" + (steady && !jump ? " - a steady signal" : ""));
+                startClip(r.hz);
                 D.status = "Auto-listen: listening to " + formatFrequency(r.hz) + ". It moves on when the channel goes quiet.";
             } else { ++D.aidx; D.ast = 0; }
             break;
@@ -884,6 +934,7 @@ void autoTick() {
             if (quiet || now - D.holdStart > 90000) {
                 char bb[96]; std::snprintf(bb, sizeof bb, "  ...ended after about %d s", (int)((now - D.holdStart) / 1000));
                 D.log += std::string(bb) + "\r\n";
+                stopClip();
                 A.dm.setMute(true);
                 ++D.aidx; D.ast = 0;
             }
@@ -909,6 +960,7 @@ void surveyBeginRange() {
 void stopSurvey(const std::string& why) {
     if (!D.sweeping) return;
     D.sweeping = false; A.scanning = false;
+    autosaveDiscovery();
     A.proc.setLinesPerSecond(A.scanSavedLps);
     A.dm.setMute(A.cfg.mute);
     A.cfg.freqHz = A.scanSavedCentre; A.cfg.vfoHz = A.scanSavedVfo;
@@ -930,7 +982,7 @@ void startSurvey(bool quick) {
     D.list = surveyRanges(quick, (double)A.caps.minFreqHz, (double)A.caps.maxFreqHz);
     if (D.list.empty()) { D.status = "This receiver cannot tune the bands the sweep covers."; discoverPush(); return; }
     D.quick = quick; D.idx = 0; D.pass = 0;
-    D.table.clear(); D.base.clear();
+    D.base.clear();
     A.scanSavedCentre = A.cfg.freqHz; A.scanSavedVfo = A.cfg.vfoHz; A.scanSavedLps = 30;
     D.sweeping = true; A.scanning = true;
     A.dm.setMute(true);
@@ -949,7 +1001,7 @@ void surveyFeed(const std::vector<SpectrumFrame>& fr) {
         const ScanReport rep = A.scan.result();
         D.table.addSignals(findSignals(rep.spectrumDb, rep.spectrumLoHz, rep.spectrumBinHz));
         if (++D.idx >= D.list.size()) {
-            D.table.endPass(); D.idx = 0; ++D.pass;
+            D.table.endPass(); announceNew(); autosaveDiscovery(); D.idx = 0; ++D.pass;
             if (!D.quick) { stopSurvey("Full sweep finished: " + std::to_string(D.table.rows().size()) + " signal(s) found. Double-click one to listen."); return; }
         }
         surveyBeginRange();
@@ -984,13 +1036,75 @@ void discoverFavourite(const DiscoveryRow& r) {
     if (g_favs.size() >= kMaxFavs) { D.status = "The favourites list is full (40)."; discoverPush(); return; }
     Fav f; f.hz = r.hz; f.mode = r.mode; f.name = formatFrequency(r.hz) + " " + r.where;
     for (char& c : f.name) if (c == '|' || (unsigned char)c < 32) c = ' ';
-    g_favs.push_back(f); fillPresets();
-    D.status = "Saved " + formatFrequency(r.hz) + " as a favourite. It is in the Quick jump list in the main window.";
+    g_favs.push_back(f); favouritesRefresh();
+    D.status = "Saved " + formatFrequency(r.hz) + " as a favourite. Manage favourites under Tools, Favourite stations.";
     discoverPush();
 }
 
+std::string pickFile(bool save, const char* filter, const char* ext, const char* title, const std::string& initial) {
+    char file[MAX_PATH] = {0};
+    std::snprintf(file, sizeof file, "%s", initial.c_str());
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof ofn; ofn.hwndOwner = A.hwnd;
+    ofn.lpstrFilter = filter; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.lpstrDefExt = ext; ofn.lpstrTitle = title;
+    ofn.Flags = save ? (OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY) : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY);
+    const BOOL ok = save ? GetSaveFileNameA(&ofn) : GetOpenFileNameA(&ofn);
+    return ok ? std::string(file) : std::string();
+}
+
 void openDiscover() {
+    static bool triedLoad = false;
+    if (!discoverOpen()) { D.recClips = false; D.beepNew = false; }   // the window's tick boxes start cleared
+    if (!triedLoad) {                                            // bring back the signals found last time
+        triedLoad = true;
+        if (D.table.size() == 0 && D.table.load(discoveryPath()))
+            D.status = "Loaded " + std::to_string(D.table.size()) + " signal(s) from your last session. New sweeps add to them, and anything not seen before is marked NEW.";
+    }
     DiscoverHost h;
+    h.saveScan = [] {
+        SYSTEMTIME t; GetLocalTime(&t); char n[64];
+        std::snprintf(n, sizeof n, "scan_%04d-%02d-%02d", t.wYear, t.wMonth, t.wDay);
+        const std::string f = pickFile(true, "OpenRadio Lab scan (*.tsv)\0*.tsv\0", "tsv", "Save this scan as...", n);
+        if (f.empty()) return;
+        D.status = D.table.save(f) ? "Saved " + std::to_string(D.table.size()) + " signal(s) to " + f : "That file could not be written.";
+        discoverPush();
+    };
+    h.loadScan = [] {
+        if (D.sweeping) { D.status = "Stop the sweep first, then open a scan."; discoverPush(); return; }
+        setAutoListen(false);
+        const std::string f = pickFile(false, "OpenRadio Lab scan (*.tsv)\0*.tsv\0All files\0*.*\0", "tsv", "Open a saved scan...", "");
+        if (f.empty()) return;
+        DiscoveryTable t;
+        if (!t.load(f)) { D.status = "That file is not an OpenRadio Lab scan."; discoverPush(); return; }
+        D.table = t; D.told.clear();
+        D.status = "Opened " + std::to_string(D.table.size()) + " signal(s) from " + f + ". Run a sweep to see which are still there and what is new.";
+        discoverPush();
+    };
+    h.exportCsv = [] {
+        if (D.table.size() == 0) { D.status = "There is nothing to export yet. Run a sweep first."; discoverPush(); return; }
+        const std::string f = pickFile(true, "CSV for a spreadsheet (*.csv)\0*.csv\0", "csv", "Export the list as...", "signals");
+        if (f.empty()) return;
+        const std::string csv = D.table.toCsv();
+        std::FILE* fp = std::fopen(f.c_str(), "wb");
+        const bool ok = fp && std::fwrite(csv.data(), 1, csv.size(), fp) == csv.size();
+        if (fp) std::fclose(fp);
+        D.status = ok ? "Exported " + std::to_string(D.table.size()) + " signal(s) to " + f : "That file could not be written.";
+        discoverPush();
+    };
+    h.clearScan = [] {
+        if (D.sweeping) { D.status = "Stop the sweep first."; discoverPush(); return; }
+        setAutoListen(false);
+        D.table.clear(); D.base.clear(); D.told.clear();
+        DeleteFileA(discoveryPath().c_str());
+        D.status = "The list is empty. Press Quick sweep to start again.";
+        discoverPush();
+    };
+    h.recordClips = [](bool on) { D.recClips = on; };
+    h.beepOnNew = [](bool on) { D.beepNew = on; };
+    h.setNote = [](double hz, const std::string& note) {
+        if (D.table.setNote(hz, note)) { autosaveDiscovery(); D.status = "Note saved."; } else D.status = "That signal is no longer in the list.";
+        discoverPush();
+    };
     h.start = [](bool q) { startSurvey(q); };
     h.stop = [] { stopSurvey("Sweep stopped. The signals found are listed below."); };
     h.listen = [](const DiscoveryRow& r) { discoverListen(r); };
@@ -999,6 +1113,32 @@ void openDiscover() {
     h.addToJournal = [] { openJournal(true); };
     showDiscover(A.hwnd, A.hi, A.font, h);
     discoverPush();
+}
+
+void openFavourites() {
+    FavHost h;
+    h.list = [] { std::vector<FavItem> v; for (auto& f : g_favs) { FavItem i; i.hz = f.hz; i.mode = f.mode; i.name = f.name; v.push_back(i); } return v; };
+    h.listen = [](int i) {
+        if (i < 0 || i >= (int)g_favs.size()) return;
+        const Fav f = g_favs[(size_t)i];
+        if (A.dev && A.dev->isPlayback()) { A.notice = "A recording has a fixed tuning. Choose the live receiver to tune to a favourite."; updateInfo(); return; }
+        stopAdsb(true);
+        tuneTo(f.hz);
+        if (f.mode != A.cfg.mode) { setModeIndex(f.mode, true); updateInfo(); }
+    };
+    h.rename = [](int i, const std::string& n) {
+        if (i < 0 || i >= (int)g_favs.size()) return;
+        std::string t = n; for (char& c : t) if (c == '|' || (unsigned char)c < 32) c = ' ';
+        g_favs[(size_t)i].name = t;
+    };
+    h.remove = [](int i) { if (i >= 0 && i < (int)g_favs.size()) g_favs.erase(g_favs.begin() + i); };
+    h.move = [](int i, int d) {
+        const int j = i + d;
+        if (i < 0 || j < 0 || i >= (int)g_favs.size() || j >= (int)g_favs.size()) return;
+        std::swap(g_favs[(size_t)i], g_favs[(size_t)j]);
+    };
+    h.addCurrent = [] { addFavourite(); favouritesRefresh(); };
+    showFavourites(A.hwnd, A.hi, A.font, h);
 }
 
 // ------------------------------------------------------------------ Aircraft tracker (ADS-B, 1090 MHz)
@@ -1422,7 +1562,6 @@ const size_t kNumPresets = sizeof(kPresets) / sizeof(kPresets[0]);
 void fillPresets() {
     SendMessageA(H(ID_PRESET), CB_RESETCONTENT, 0, 0);
     for (auto& p : kPresets) cbAdd(ID_PRESET, p.label);
-    for (auto& f : g_favs) cbAdd(ID_PRESET, "* " + f.name + " (" + formatFrequency(f.hz) + ")");
     cbSel(ID_PRESET, 0);
 }
 // Name a new favourite after what the station says it is, else by its frequency.
@@ -1437,19 +1576,8 @@ void addFavourite() {
     }
     for (char& c : f.name) if (c == '|' || (unsigned char)c < 32) c = ' ';
     g_favs.push_back(f);
-    fillPresets();
-    A.notice = "Saved " + formatFrequency(f.hz) + " as a favourite ('" + f.name + "'). Find it in the Quick jump list, marked with *.";
-    updateInfo();
-}
-void removeFavourite() {
-    for (size_t i = 0; i < g_favs.size(); ++i)
-        if (std::fabs(g_favs[i].hz - A.cfg.vfoHz) < 5e3) {
-            A.notice = "Removed favourite '" + g_favs[i].name + "'.";
-            g_favs.erase(g_favs.begin() + i);
-            fillPresets(); updateInfo();
-            return;
-        }
-    A.notice = "The frequency you are listening to is not in your favourites. Tune to the favourite you want to remove first.";
+    favouritesRefresh();
+    A.notice = "Saved " + formatFrequency(f.hz) + " as a favourite ('" + f.name + "'). Manage your favourites under Tools, Favourite stations.";
     updateInfo();
 }
 
@@ -1774,7 +1902,7 @@ void onCommand(int id, int code) {
         case ID_M_DISCOVER: openDiscover(); break;
         case ID_M_ADSB: openAdsb(); break;
         case ID_M_FAVADD: addFavourite(); break;
-        case ID_M_FAVDEL: removeFavourite(); break;
+        case ID_M_FAVLIST: openFavourites(); break;
         case ID_M_MORSE: showMorseWindow(A.hwnd, A.hi, A.font); break;
         case ID_M_ANTENNA: showAntennaWorkshop(A.hwnd, A.hi, A.font, A.cfg.vfoHz); break;
         case ID_M_EXIT: SendMessageA(A.hwnd, WM_CLOSE, 0, 0); break;
@@ -1932,6 +2060,7 @@ LRESULT CALLBACK mainProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             stopAudioCapture(false);
             closeAdsbWindow();
             stopAdsb(true);
+            autosaveDiscovery();
             saveSettings();
             stopDevice();          // device first, so nothing is still feeding the DSP thread
             A.pipe.stop();
@@ -1956,6 +2085,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     registerMorseClass(hi);
     registerDiscoverClass(hi);
     registerAdsbClass(hi);
+    registerFavouritesClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1985,7 +2115,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(tools, MF_STRING, ID_M_DISCOVER, "Discover: find what is on the air around me...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_M_FAVADD, "Save this station as a favourite");
-    AppendMenuA(tools, MF_STRING, ID_M_FAVDEL, "Remove this station from favourites");
+    AppendMenuA(tools, MF_STRING, ID_M_FAVLIST, "Favourite stations (manage)...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_M_JOURNAL, "Experiment Journal...");
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
