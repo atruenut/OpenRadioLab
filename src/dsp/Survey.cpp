@@ -95,6 +95,13 @@ std::vector<FoundSignal> findSignals(const std::vector<float>& db, double lo, do
     return out;
 }
 
+namespace { int localHour() { std::time_t t = std::time(nullptr); const std::tm* l = std::localtime(&t); return l ? l->tm_hour : 0; } }
+
+void DiscoveryTable::endPass(int hour) {
+    if (hour < 0 || hour > 23) hour = curHour_ >= 0 ? curHour_ : localHour();
+    ++hourPasses_[hour]; ++passes_;
+}
+
 void DiscoveryTable::addSignals(const std::vector<FoundSignal>& s) {
     for (const auto& f : s) {
         const double tol = std::max(8e3, f.widthHz * 0.6);
@@ -103,7 +110,7 @@ void DiscoveryTable::addSignals(const std::vector<FoundSignal>& s) {
         const long long now = (long long)std::time(nullptr);
         if (!hit) { e_.push_back(E()); hit = &e_.back(); hit->hz = f.hz; hit->width = f.widthHz; hit->firstT = now; }
         hit->lastT = now;
-        if (hit->lastPass != passes_) { ++hit->seen; hit->lastPass = passes_; }
+        if (hit->lastPass != passes_) { ++hit->seen; hit->lastPass = passes_; ++hit->hours[curHour_ >= 0 ? curHour_ : localHour()]; }
         if (f.snrDb >= hit->maxSnr) { hit->maxSnr = f.snrDb; hit->hz = f.hz; hit->width = f.widthHz; }
         hit->lastSnr = f.snrDb;
     }
@@ -131,6 +138,7 @@ std::vector<DiscoveryRow> DiscoveryTable::rows() const {
     for (const auto& e : e_) {
         DiscoveryRow r;
         r.firstT = e.firstT; r.lastT = e.lastT; r.note = e.note; r.isNew = hadBaseline_ && !e.loaded;
+        for (int h = 0; h < 24; ++h) { r.hourSeen[h] = e.hours[h]; r.hourPasses[h] = hourPasses_[h]; }
         r.hz = e.hz; r.snrDb = e.maxSnr; r.widthHz = e.width; r.seen = e.seen; r.passes = std::max(1, passes_);
         r.activeNow = passes_ > 0 ? e.lastPass == passes_ - 1 : e.lastPass == 0;
         describeSignal(r);
@@ -153,27 +161,36 @@ bool DiscoveryTable::setNote(double hz, const std::string& note) {
 bool DiscoveryTable::save(const std::string& path) const {
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
-    std::fprintf(f, "OpenRadioLab-discovery\t1\t%d\n", passes_);
+    std::fprintf(f, "OpenRadioLab-discovery\t1\t%d\t", passes_);
+    for (int h = 0; h < 24; ++h) std::fprintf(f, h ? ",%d" : "%d", hourPasses_[h]);
+    std::fprintf(f, "\n");
     for (const auto& e : e_)
-        std::fprintf(f, "%.0f\t%.0f\t%.2f\t%.2f\t%d\t%lld\t%lld\t%s\n", e.hz, e.width, e.maxSnr, e.lastSnr, e.seen, e.firstT, e.lastT, e.note.c_str());
+        {
+        std::fprintf(f, "%.0f\t%.0f\t%.2f\t%.2f\t%d\t%lld\t%lld\t%s\t", e.hz, e.width, e.maxSnr, e.lastSnr, e.seen, e.firstT, e.lastT, e.note.c_str());
+        for (int h = 0; h < 24; ++h) std::fprintf(f, h ? ",%d" : "%d", e.hours[h]);
+        std::fprintf(f, "\n");
+    }
     return std::fclose(f) == 0;
 }
 
 bool DiscoveryTable::load(const std::string& path) {
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
-    std::vector<E> in; int savedPasses = 0; bool ok = false;
+    std::vector<E> in; int savedPasses = 0; bool ok = false; int hp[24] = {0};
     char line[600];
     while (std::fgets(line, sizeof line, f)) {
         std::string t = line;
         while (!t.empty() && (t.back() == '\n' || t.back() == '\r')) t.pop_back();
         std::vector<std::string> c; size_t a = 0;
         for (;;) { const size_t b = t.find('\t', a); if (b == std::string::npos) { c.push_back(t.substr(a)); break; } c.push_back(t.substr(a, b - a)); a = b + 1; }
-        if (!ok) { if (c.size() < 3 || c[0] != "OpenRadioLab-discovery") { std::fclose(f); return false; } savedPasses = std::atoi(c[2].c_str()); ok = true; continue; }
+        if (!ok) { if (c.size() < 3 || c[0] != "OpenRadioLab-discovery") { std::fclose(f); return false; } savedPasses = std::atoi(c[2].c_str()); ok = true;
+            if (c.size() > 3) { size_t q = 0; for (int h = 0; h < 24 && q <= c[3].size(); ++h) { hp[h] = std::max(0, std::atoi(c[3].c_str() + q)); const size_t n = c[3].find(',', q); if (n == std::string::npos) break; q = n + 1; } }
+            continue; }
         if (c.size() < 7) continue;
         E e; e.hz = std::atof(c[0].c_str()); e.width = std::atof(c[1].c_str()); e.maxSnr = std::atof(c[2].c_str()); e.lastSnr = std::atof(c[3].c_str());
         e.seen = std::atoi(c[4].c_str()); e.firstT = std::atoll(c[5].c_str()); e.lastT = std::atoll(c[6].c_str());
         if (c.size() > 7) e.note = c[7];
+        if (c.size() > 8) { size_t q = 0; for (int h = 0; h < 24 && q <= c[8].size(); ++h) { e.hours[h] = std::max(0, std::atoi(c[8].c_str() + q)); const size_t n = c[8].find(',', q); if (n == std::string::npos) break; q = n + 1; } }
         if (e.hz < 1e3 || e.hz > 1e11 || e.width < 0 || in.size() >= 20000) continue;
         e.loaded = true; e.lastPass = -1;
         in.push_back(e);
@@ -182,6 +199,8 @@ bool DiscoveryTable::load(const std::string& path) {
     if (!ok) return false;
     passes_ = std::max(1, std::min(savedPasses, 20));                   // older history counts for less, so the ratios stay meaningful
     for (auto& e : in) e.seen = std::max(1, std::min(passes_, (int)std::lround(e.seen * (double)passes_ / std::max(1, savedPasses))));
+    for (int h = 0; h < 24; ++h) hourPasses_[h] = hp[h];
+    for (auto& e : in) for (int h = 0; h < 24; ++h) e.hours[h] = std::min(e.hours[h], hourPasses_[h]);   // a damaged file cannot claim more sightings than sweeps
     e_ = in; hadBaseline_ = !e_.empty();
     return true;
 }
@@ -197,6 +216,45 @@ std::string DiscoveryTable::toCsv() const {
         o += b + q(r.where) + "," + modes[std::max(0, std::min(5, r.mode))] + "," + q(when(r.firstT)) + "," + q(when(r.lastT)) + "," + q(r.note) + "," + q(r.what) + "\r\n";
     }
     return o;
+}
+
+std::string activityPattern(const DiscoveryRow& r) {
+    int covered = 0; for (int h = 0; h < 24; ++h) if (r.hourPasses[h] > 0) ++covered;
+    if (covered < 3) return "Not enough sweeps at different times of day yet to show a pattern. Sweep at a few different times (morning, evening, night) and it will fill in.";
+    std::string bar, runs; int start = -1;
+    auto close = [&](int endH) { char b[40]; std::snprintf(b, sizeof b, "%s%02d:00-%02d:59", runs.empty() ? "" : ", ", start, endH); runs += b; start = -1; };
+    for (int h = 0; h < 24; ++h) {
+        const bool data = r.hourPasses[h] > 0;
+        const double ratio = data ? (double)r.hourSeen[h] / r.hourPasses[h] : 0;
+        bar += !data ? '.' : (ratio >= 0.5 ? '#' : (ratio > 0 ? '+' : '-'));
+        if (data && ratio >= 0.5) { if (start < 0) start = h; } else if (start >= 0) close(h - 1);
+    }
+    if (start >= 0) close(23);
+    std::string t = runs.empty() ? "Not usually present when checked (heard now and then)." : "Usually present around " + runs + ".";
+    t += "\r\nHours 00-23: " + bar + "   (# usually there, + sometimes, - not heard, . not checked)";
+    return t;
+}
+
+std::vector<ScanChange> DiscoveryTable::changesSince(const DiscoveryTable& older) const {
+    std::vector<ScanChange> out;
+    const std::vector<DiscoveryRow> a = older.rows(), b = rows();
+    auto match = [](const DiscoveryRow& x, const DiscoveryRow& y) { return std::fabs(x.hz - y.hz) <= std::max(8e3, std::max(x.widthHz, y.widthHz) * 0.6); };
+    std::vector<char> used(a.size(), 0);
+    for (const auto& n : b) {
+        int hit = -1;
+        for (size_t i = 0; i < a.size(); ++i) if (!used[i] && match(a[i], n)) { hit = (int)i; break; }
+        ScanChange c; c.hz = n.hz; c.snrNew = n.snrDb; c.widthHz = n.widthHz; c.where = n.where; c.note = n.note;
+        if (hit < 0) { c.kind = 1; out.push_back(c); continue; }
+        used[hit] = 1; c.snrOld = a[hit].snrDb;
+        if (c.note.empty()) c.note = a[hit].note;
+        if (n.snrDb - a[hit].snrDb >= 6.0) { c.kind = 2; out.push_back(c); }
+        else if (a[hit].snrDb - n.snrDb >= 6.0) { c.kind = 3; out.push_back(c); }
+    }
+    for (size_t i = 0; i < a.size(); ++i) if (!used[i]) {
+        ScanChange c; c.hz = a[i].hz; c.kind = 0; c.snrOld = a[i].snrDb; c.widthHz = a[i].widthHz; c.where = a[i].where; c.note = a[i].note; out.push_back(c);
+    }
+    std::sort(out.begin(), out.end(), [](const ScanChange& x, const ScanChange& y) { return x.hz < y.hz; });
+    return out;
 }
 
 } // namespace orl

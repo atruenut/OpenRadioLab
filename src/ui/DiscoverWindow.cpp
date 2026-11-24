@@ -18,7 +18,7 @@ namespace orl {
 namespace {
 
 const char* kClass = "ORLDiscoverWindow";
-enum { D_QUICK = 1, D_FULL, D_STOP, D_AUTO, D_STATUS, D_LIST, D_DETAIL, D_LISTEN, D_FAV, D_LOG, D_LLOG, D_JOURNAL, D_SAVE, D_OPEN, D_CSV, D_CLEAR, D_ONLYNEW, D_NOWIDE, D_NOTEL, D_NOTE, D_NOTESAVE, D_CLIPS, D_BEEP };
+enum { D_QUICK = 1, D_FULL, D_STOP, D_AUTO, D_STATUS, D_LIST, D_DETAIL, D_LISTEN, D_FAV, D_LOG, D_LLOG, D_JOURNAL, D_SAVE, D_OPEN, D_CSV, D_CLEAR, D_ONLYNEW, D_NOWIDE, D_NOTEL, D_NOTE, D_NOTESAVE, D_CLIPS, D_BEEP, D_WATCH, D_COMPARE, D_WATCHL };
 const int kCols = 9;
 
 struct State {
@@ -91,6 +91,7 @@ void showDetail() {
     std::snprintf(b, sizeof b, "%s   (%.0f dB above the noise, about %.0f kHz wide, seen in %d of %d sweeps)\r\n", formatFrequency(r.hz).c_str(), r.snrDb, r.widthHz / 1e3, r.seen, r.passes);
     std::string t = b + r.what + ".\r\n";
     if (r.firstT > 0) t += "First seen " + whenText(r.firstT) + ", last seen " + whenText(r.lastT) + (r.isNew ? ". New since the scan you loaded.\r\n" : ".\r\n");
+    t += "When: " + activityPattern(r) + "\r\n";
     t += "Double-click or press Listen to tune there. If it sounds wrong, try another mode in the main window.";
     SetWindowTextA(H(D_DETAIL), t.c_str());
     static double shownHz = -1;                         // load the note box only when a different signal is selected
@@ -141,8 +142,8 @@ void layout() {
     auto b2 = [&](int id, int w) { SetWindowPos(H(id), nullptr, x, y2, w, S(24), SWP_NOZORDER); x += w + S(6); };
     b2(D_SAVE, S(100)); b2(D_OPEN, S(100)); b2(D_CSV, S(110)); b2(D_CLEAR, S(90)); x += S(10); b2(D_ONLYNEW, S(190)); b2(D_NOWIDE, S(200));
     SetWindowPos(H(D_STATUS), nullptr, m, y2 + S(30), W - 2 * m, S(20), SWP_NOZORDER);
-    const int top = y2 + S(54), detH = S(78), logH = S(70), btnH = S(28);
-    const int listH = Hh - top - detH - logH - btnH * 2 - S(30) - 4 * m;
+    const int top = y2 + S(54), detH = S(104), logH = S(70), btnH = S(28);
+    const int listH = Hh - top - detH - logH - btnH * 3 - S(30) - 5 * m;
     SetWindowPos(H(D_LIST), nullptr, m, top, W - 2 * m, std::max(S(80), listH), SWP_NOZORDER);
     int y = top + std::max(S(80), listH) + m;
     SetWindowPos(H(D_DETAIL), nullptr, m, y, W - 2 * m, detH, SWP_NOZORDER); y += detH + m;
@@ -154,6 +155,10 @@ void layout() {
     SetWindowPos(H(D_NOTEL), nullptr, m, y + S(4), S(80), S(20), SWP_NOZORDER);
     SetWindowPos(H(D_NOTE), nullptr, m + S(84), y, W - 2 * m - S(84) - S(110), S(26), SWP_NOZORDER);
     SetWindowPos(H(D_NOTESAVE), nullptr, W - m - S(104), y, S(104), S(26), SWP_NOZORDER);
+    y += S(32);
+    SetWindowPos(H(D_WATCH), nullptr, m, y, S(250), S(200), SWP_NOZORDER);
+    SetWindowPos(H(D_COMPARE), nullptr, m + S(260), y, S(230), S(26), SWP_NOZORDER);
+    SetWindowPos(H(D_WATCHL), nullptr, m + S(500), y + S(4), W - 2 * m - S(500), S(20), SWP_NOZORDER);
     y += S(32);
     SetWindowPos(H(D_LLOG), nullptr, m, y, S(290), S(18), SWP_NOZORDER);
     SetWindowPos(H(D_CLIPS), nullptr, m + S(300), y - S(3), S(280), S(22), SWP_NOZORDER);
@@ -199,6 +204,12 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             mk("BUTTON", "Save as favourite", BS_PUSHBUTTON | WS_TABSTOP, 0, D_FAV);
             mk("BUTTON", "Add what I hear to the journal", BS_PUSHBUTTON | WS_TABSTOP, 0, D_JOURNAL);
             mk("STATIC", "Activity and new signals (log):", 0, 0, D_LLOG);
+            { HWND cb = mk("COMBOBOX", "", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 0, D_WATCH);
+              const char* it[] = {"Watch: off", "Watch: sweep every 10 minutes", "Watch: sweep every 30 minutes", "Watch: sweep every hour"};
+              for (const char* t : it) SendMessageA(cb, CB_ADDSTRING, 0, (LPARAM)t);
+              SendMessageA(cb, CB_SETCURSEL, 0, 0); }
+            mk("BUTTON", "Compare with an older scan...", BS_PUSHBUTTON | WS_TABSTOP, 0, D_COMPARE);
+            mk("STATIC", "Watch retunes the radio for a minute each time, so it suits leaving the program running.", 0, 0, D_WATCHL);
             mk("BUTTON", "Auto-listen saves a sound clip", BS_AUTOCHECKBOX | WS_TABSTOP, 0, D_CLIPS);
             mk("BUTTON", "Beep on a new signal", BS_AUTOCHECKBOX | WS_TABSTOP, 0, D_BEEP);
             mk("EDIT", "", WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, WS_EX_CLIENTEDGE, D_LOG);
@@ -206,7 +217,7 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_SIZE: layout(); return 0;
-        case WM_GETMINMAXINFO: { auto* mm = (MINMAXINFO*)l; mm->ptMinTrackSize.x = S(820); mm->ptMinTrackSize.y = S(560); return 0; }
+        case WM_GETMINMAXINFO: { auto* mm = (MINMAXINFO*)l; mm->ptMinTrackSize.x = S(820); mm->ptMinTrackSize.y = S(640); return 0; }
         case WM_NOTIFY: {
             auto* nm = (NMHDR*)l;
             if (nm->idFrom == D_LIST) {
@@ -237,6 +248,12 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             else if (id == D_CLEAR && G.host.clearScan) {
                 if (MessageBoxA(h, "Clear the list of signals? Scans you saved to a file with Save scan are not touched.", "Discover", MB_YESNO | MB_ICONQUESTION) == IDYES) G.host.clearScan();
             }
+            else if (id == D_COMPARE && G.host.compareScan) G.host.compareScan();
+            else if (id == D_WATCH && HIWORD(w) == CBN_SELCHANGE && G.host.setWatch) {
+                static const int mins[] = {0, 10, 30, 60};
+                const int k = (int)SendMessageA(H(D_WATCH), CB_GETCURSEL, 0, 0);
+                G.host.setWatch(k >= 0 && k < 4 ? mins[k] : 0);
+            }
             else if (id == D_CLIPS && G.host.recordClips) G.host.recordClips(checked(D_CLIPS));
             else if (id == D_BEEP && G.host.beepOnNew) G.host.beepOnNew(checked(D_BEEP));
             else if (id == D_ONLYNEW || id == D_NOWIDE) { rebuildRows(); fill(); }
@@ -252,7 +269,26 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcA(h, m, w, l);
 }
 
+const char* kTextClass = "ORLTextReportWindow";
+LRESULT CALLBACK textProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+        case WM_SIZE: SetWindowPos(GetDlgItem(h, 1), nullptr, 8, 8, LOWORD(l) - 16, HIWORD(l) - 16, SWP_NOZORDER); return 0;
+        case WM_CLOSE: DestroyWindow(h); return 0;
+    }
+    return DefWindowProcA(h, m, w, l);
+}
+
 } // namespace
+
+void showTextReport(HWND owner, HINSTANCE hi, HFONT font, const std::string& title, const std::string& text) {
+    static bool reg = false;
+    if (!reg) { WNDCLASSA wc{}; wc.lpfnWndProc = textProc; wc.hInstance = hi; wc.hCursor = LoadCursor(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.lpszClassName = kTextClass; RegisterClassA(&wc); reg = true; }
+    HWND w = CreateWindowExA(0, kTextClass, title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 760, 560, owner, nullptr, hi, nullptr);
+    std::string crlf; for (char c : text) { if (c == '\n') crlf += "\r\n"; else crlf += c; }
+    HWND e = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", crlf.c_str(), WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 8, 8, 700, 500, w, (HMENU)(INT_PTR)1, nullptr, nullptr);
+    SendMessageA(e, WM_SETFONT, (WPARAM)font, TRUE);
+    RECT rc; GetClientRect(w, &rc); SetWindowPos(e, nullptr, 8, 8, rc.right - 16, rc.bottom - 16, SWP_NOZORDER);
+}
 
 bool registerDiscoverClass(HINSTANCE hi) {
     WNDCLASSA wc{};

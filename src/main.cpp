@@ -47,7 +47,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.16.0";
+const char* kAppName = "OpenRadio Lab 0.17.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -815,6 +815,7 @@ struct DiscoverState {
     double mn = 1e9, mx = -1e9;
     std::vector<DiscoveryRow> cand; std::map<long, double> base;
     bool recClips = false, clipOn = false, beepNew = false; std::set<long> told;
+    int watchMin = 0; ULONGLONG lastEnd = 0; bool onePass = false;
 } D;
 
 bool surveyRunning() { return D.sweeping; }
@@ -959,7 +960,7 @@ void surveyBeginRange() {
 
 void stopSurvey(const std::string& why) {
     if (!D.sweeping) return;
-    D.sweeping = false; A.scanning = false;
+    D.sweeping = false; A.scanning = false; D.onePass = false; D.lastEnd = GetTickCount64();
     autosaveDiscovery();
     A.proc.setLinesPerSecond(A.scanSavedLps);
     A.dm.setMute(A.cfg.mute);
@@ -1002,6 +1003,7 @@ void surveyFeed(const std::vector<SpectrumFrame>& fr) {
         D.table.addSignals(findSignals(rep.spectrumDb, rep.spectrumLoHz, rep.spectrumBinHz));
         if (++D.idx >= D.list.size()) {
             D.table.endPass(); announceNew(); autosaveDiscovery(); D.idx = 0; ++D.pass;
+            if (D.onePass) { D.onePass = false; stopSurvey("Watch sweep finished: " + std::to_string(D.table.rows().size()) + " signal(s) in the list. The next one starts on schedule."); return; }
             if (!D.quick) { stopSurvey("Full sweep finished: " + std::to_string(D.table.rows().size()) + " signal(s) found. Double-click one to listen."); return; }
         }
         surveyBeginRange();
@@ -1054,7 +1056,7 @@ std::string pickFile(bool save, const char* filter, const char* ext, const char*
 
 void openDiscover() {
     static bool triedLoad = false;
-    if (!discoverOpen()) { D.recClips = false; D.beepNew = false; }   // the window's tick boxes start cleared
+    if (!discoverOpen()) { D.recClips = false; D.beepNew = false; D.watchMin = 0; }   // the window's tick boxes start cleared
     if (!triedLoad) {                                            // bring back the signals found last time
         triedLoad = true;
         if (D.table.size() == 0 && D.table.load(discoveryPath()))
@@ -1098,6 +1100,30 @@ void openDiscover() {
         DeleteFileA(discoveryPath().c_str());
         D.status = "The list is empty. Press Quick sweep to start again.";
         discoverPush();
+    };
+    h.setWatch = [](int m) {
+        D.watchMin = m; D.lastEnd = GetTickCount64();
+        D.status = m ? "Watch is on: a quick sweep runs every " + std::to_string(m) + " minutes while this window stays open. New signals are written to the log." : "Watch is off.";
+        discoverPush();
+    };
+    h.compareScan = [] {
+        if (D.table.size() == 0) { D.status = "The list is empty. Run a sweep (or open a scan) first; then compare it with an older one."; discoverPush(); return; }
+        const std::string f = pickFile(false, "OpenRadio Lab scan (*.tsv)\0*.tsv\0All files\0*.*\0", "tsv", "Choose the OLDER scan to compare with...", "");
+        if (f.empty()) return;
+        DiscoveryTable older;
+        if (!older.load(f)) { D.status = "That file is not an OpenRadio Lab scan."; discoverPush(); return; }
+        const auto ch = D.table.changesSince(older);
+        static const char* kind[] = {"GONE      ", "NEW       ", "STRONGER  ", "WEAKER    "};
+        std::string t = "Comparing the list now on screen with the older scan:\n" + f + "\n\n";
+        int c[4] = {0, 0, 0, 0}; for (auto& x : ch) ++c[x.kind];
+        t += std::to_string(c[1]) + " new, " + std::to_string(c[0]) + " gone, " + std::to_string(c[2]) + " stronger, " + std::to_string(c[3]) + " weaker (6 dB or more).\n"
+             "Gone can simply mean the signal was off the air or too weak this time. Strength changes can come from a different place, antenna or gain.\n\n";
+        for (auto& x : ch) {
+            char b[200]; std::snprintf(b, sizeof b, "%s %-14s %s%s%s\n", kind[x.kind], formatFrequency(x.hz).c_str(), x.where.c_str(), x.note.empty() ? "" : "  - ", x.note.c_str());
+            t += b;
+        }
+        if (ch.empty()) t += "No differences.\n";
+        showTextReport(A.hwnd, A.hi, A.font, "OpenRadio Lab - what changed between scans", t);
     };
     h.recordClips = [](bool on) { D.recClips = on; };
     h.beepOnNew = [](bool on) { D.beepNew = on; };
@@ -1502,6 +1528,8 @@ void onTimer() {
     morseSetCwMode(A.cfg.mode == 5);
     if (AD.on && (std::fabs(A.cfg.freqHz - 1090e6) > 1.0 || !A.dev || !A.dev->isRunning())) stopAdsb(false);   // the user retuned: stop tracking, keep their tuning
     if (D.autoOn && !D.sweeping && A.dev && A.dev->isRunning() && !A.dev->isPlayback()) autoTick();
+    if (D.watchMin > 0 && discoverOpen() && !D.sweeping && !D.autoOn && !A.scanning && !A.rec.active() && !A.wav.active() && A.dev && A.dev->isRunning() && !A.dev->isPlayback()
+        && GetTickCount64() - D.lastEnd >= (ULONGLONG)D.watchMin * 60000ull) { D.onePass = true; startSurvey(true); if (!D.sweeping) D.onePass = false; D.lastEnd = GetTickCount64(); }
     if (discoverOpen()) { static ULONGLONG lastD = 0; const ULONGLONG t = GetTickCount64(); if (t - lastD >= 500) { lastD = t; discoverPush(); } }
     {   // station data changes slowly; refresh its card about once a second, and re-lay-out when the card appears or goes
         static ULONGLONG lastRdsMs = 0; static bool shown = false;

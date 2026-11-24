@@ -22,7 +22,7 @@ Licence: **GPL-2.0-only** (see [LICENSE](LICENSE)).
 | **Automatic hardware detection** | Scans USB, diagnoses a missing driver in plain language, loads `rtlsdr.dll` at run time, and falls back to a labelled simulator when nothing is plugged in. |
 | **Simulator** | A fictional radio world with stations, bursts, a DC spike and ADC clipping, so everything works with no hardware. Always labelled **SIMULATED**. |
 | **Recording and playback** | Save the whole captured band to a `.orliq` file; replay it later with play/pause/seek/repeat, or share it with someone who has no dongle. |
-| **Discover** | Sweeps the whole tunable range, lists every signal found (sortable; saved between sessions and as files; CSV export; personal notes), marks signals that are new since the last scan, and can auto-listen: hop between active channels, stop where something is being said and optionally save a clip. |
+| **Discover** | Sweeps the whole tunable range, lists every signal found (sortable; saved between sessions and as files; CSV export; personal notes), marks signals that are new since the last scan, shows when each is usually on the air, compares two scans, can re-sweep on a schedule (Watch), and can auto-listen: hop between active channels, stop where something is being said and optionally save a clip. |
 | **Favourites** | A window to sort, rename, reorder, remove and tune to your saved stations. |
 | **Aircraft tracker** | Decodes ADS-B on 1090 MHz: lists nearby aircraft with flight, height, speed, heading and position, and plots them on a simple radar view. |
 | **Morse and RDS** | Morse text decoder for CW; station name, song text and programme type from FM RDS/RBDS. |

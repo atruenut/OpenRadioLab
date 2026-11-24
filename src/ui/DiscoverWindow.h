@@ -29,12 +29,16 @@ struct DiscoverHost {
     std::function<void()> clearScan;                       // start with an empty list
     std::function<void(double hz, const std::string& note)> setNote;
     std::function<void(bool on)> recordClips;              // auto-listen saves a sound clip of each activity
+    std::function<void(int minutes)> setWatch;             // 0 = off; otherwise sweep once every N minutes while this window is open
+    std::function<void()> compareScan;                     // pick an older scan file and report what changed
     std::function<void(bool on)> beepOnNew;                // a short beep when a sweep finds a signal not in the loaded scan
 };
 
 bool registerDiscoverClass(HINSTANCE hi);
 void showDiscover(HWND owner, HINSTANCE hi, HFONT font, DiscoverHost host);
 bool discoverOpen();
+// A simple read-only text window (used for the comparison report).
+void showTextReport(HWND owner, HINSTANCE hi, HFONT font, const std::string& title, const std::string& text);
 // UI thread only. Safe to call when the window is closed.
 void discoverUpdate(const std::vector<DiscoveryRow>& rows, const std::string& status, bool sweeping, bool autoOn, const std::string& activityLog);
 

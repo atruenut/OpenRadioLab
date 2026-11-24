@@ -269,3 +269,13 @@ Because ratios like 3/10 now cover many sweeps, old history counts for less than
 **Sound clips.** With *Auto-listen saves a sound clip* ticked, each time Auto-listen stops on activity it saves what it heard as a WAV file in your recordings folder (or `clips` next to the settings). The log says where. Calls that sound like private conversations are not for sharing.
 
 **Favourites window.** Favourites are no longer mixed into the Quick jump list. Tools, then *Favourite stations (manage)* opens a window where you can sort, rename, reorder, remove and tune to them. Double-click tunes to one; *Add what I am listening to now* adds the current station.
+
+## Patterns, comparing scans and Watch (0.17.0)
+
+**When is it on the air?** Every sweep notes the hour of the day. Select a signal and the detail box adds a line such as *Usually present around 18:00-22:59* and a 24-character bar (one character per hour: `#` usually there, `+` sometimes, `-` not heard, `.` not checked yet).
+It needs sweeps in at least three different hours before it says anything. Run a quick sweep in the morning, evening and at night, or use Watch, and it fills in. The history is saved with the scan.
+
+**Watch.** Choose *Watch: sweep every 10 / 30 minutes / hour* and the program runs one quick sweep on that schedule while the Discover window is open, then returns the radio to what you were listening to. New signals go in the log (and beep if you ticked that). It retunes the radio during each sweep, so it suits leaving the program running while you do something else.
+
+**Compare with an older scan.** Open Discover with a current list, press *Compare with an older scan...* and choose a saved file. A report lists what is new, gone, 6 dB or more stronger, and 6 dB or more weaker. Use it to compare two places, two antennas, or the same place on two days.
+"Gone" can simply mean a signal was off the air or too weak that time.

@@ -113,6 +113,38 @@ int main() {
         CHECK(!v.load("build/_bad.tsv"), "loaded junk");
         std::remove(path.c_str()); std::remove("build/_bad.tsv");
     }
+    std::printf("[Time-of-day pattern and comparing scans]\n");
+    {
+        DiscoveryTable t; t.setHourForTesting(19);
+        FoundSignal a; a.hz = 146.52e6; a.widthHz = 12e3; a.snrDb = 25; a.levelDb = -45;
+        FoundSignal b; b.hz = 162.55e6; b.widthHz = 10e3; b.snrDb = 30; b.levelDb = -40;
+        for (int h : {8, 19, 20, 3}) {
+            t.setHourForTesting(h);
+            if (h >= 19) t.addSignals({a, b}); else t.addSignals({b});
+            t.endPass();
+        }
+        auto rs = t.rows(); std::string pa, pb;
+        for (auto& r : rs) { if (std::fabs(r.hz - 146.52e6) < 1) pa = activityPattern(r); else pb = activityPattern(r); }
+        std::printf("  %s\n", pa.c_str());
+        CHECK(pa.find("19:00-20:59") != std::string::npos, "evening run not found: %s", pa.c_str());
+        CHECK(pb.find("03:00-03:59") != std::string::npos && pb.find("19:00-20:59") != std::string::npos, "always-on pattern wrong: %s", pb.c_str());
+        DiscoveryTable few; few.setHourForTesting(5); few.addSignals({a}); few.endPass();
+        CHECK(activityPattern(few.rows()[0]).find("Not enough") != std::string::npos, "pattern shown from one hour");
+        t.save("build/_h.tsv"); DiscoveryTable u; CHECK(u.load("build/_h.tsv"), "load");
+        std::string pu; for (auto& r : u.rows()) if (std::fabs(r.hz - 146.52e6) < 1) pu = activityPattern(r);
+        CHECK(pu == pa, "hour history lost in save/load:\n%s\nvs\n%s", pu.c_str(), pa.c_str());
+        std::remove("build/_h.tsv");
+        // comparing: older has a(25) and b(30); newer has b(15, weaker), c (new)
+        DiscoveryTable o, n;
+        o.addSignals({a, b}); o.endPass();
+        FoundSignal b2 = b; b2.snrDb = 15; FoundSignal c; c.hz = 156.8e6; c.widthHz = 12e3; c.snrDb = 20; c.levelDb = -50;
+        n.addSignals({b2, c}); n.endPass();
+        auto ch = n.changesSince(o);
+        int gone = 0, app = 0, weak = 0, strong = 0;
+        for (auto& x : ch) { gone += x.kind == 0; app += x.kind == 1; strong += x.kind == 2; weak += x.kind == 3; }
+        CHECK(ch.size() == 3 && gone == 1 && app == 1 && weak == 1 && strong == 0, "changes: %zu gone %d new %d weaker %d", ch.size(), gone, app, weak);
+        CHECK(o.changesSince(o).empty(), "identical scans differ");
+    }
     std::printf("%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL SURVEY TESTS PASSED", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
 }
