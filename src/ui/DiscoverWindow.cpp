@@ -18,7 +18,7 @@ namespace orl {
 namespace {
 
 const char* kClass = "ORLDiscoverWindow";
-enum { D_QUICK = 1, D_FULL, D_STOP, D_AUTO, D_STATUS, D_LIST, D_DETAIL, D_LISTEN, D_FAV, D_LOG, D_LLOG, D_JOURNAL, D_SAVE, D_OPEN, D_CSV, D_CLEAR, D_ONLYNEW, D_NOWIDE, D_NOTEL, D_NOTE, D_NOTESAVE, D_CLIPS, D_BEEP, D_WATCH, D_COMPARE, D_WATCHL };
+enum { D_QUICK = 1, D_FULL, D_STOP, D_AUTO, D_STATUS, D_LIST, D_DETAIL, D_LISTEN, D_FAV, D_LOG, D_LLOG, D_JOURNAL, D_SAVE, D_OPEN, D_CSV, D_CLEAR, D_ONLYNEW, D_NOWIDE, D_NOTEL, D_NOTE, D_NOTESAVE, D_CLIPS, D_HIDEJUNK, D_WATCH, D_COMPARE, D_WATCHL };
 const int kCols = 9;
 
 struct State {
@@ -26,7 +26,7 @@ struct State {
     DiscoverHost host;
     std::vector<DiscoveryRow> rows;      // what the list shows (filtered and sorted)
     std::vector<DiscoveryRow> all;       // what the program found, best first
-    int sortCol = -1; bool sortAsc = true;
+    int sortCol = -1; bool sortAsc = true; size_t hidden = 0;
     bool sweeping = false, autoOn = false;
 } G;
 
@@ -47,8 +47,10 @@ bool checked(int id) { return SendMessageA(H(id), BM_GETCHECK, 0, 0) == BST_CHEC
 // Applies the filters and the chosen sort order to everything found.
 void rebuildRows() {
     G.rows.clear();
-    const bool onlyNew = checked(D_ONLYNEW), noWide = checked(D_NOWIDE);
+    const bool onlyNew = checked(D_ONLYNEW), noWide = checked(D_NOWIDE), noJunk = checked(D_HIDEJUNK);
+    G.hidden = 0;
     for (const auto& r : G.all) {
+        if (noJunk && r.junk) { ++G.hidden; continue; }
         if (onlyNew && !r.isNew) continue;
         if (noWide && r.widthHz >= 400e3) continue;
         G.rows.push_back(r);
@@ -162,7 +164,7 @@ void layout() {
     y += S(32);
     SetWindowPos(H(D_LLOG), nullptr, m, y, S(290), S(18), SWP_NOZORDER);
     SetWindowPos(H(D_CLIPS), nullptr, m + S(300), y - S(3), S(280), S(22), SWP_NOZORDER);
-    SetWindowPos(H(D_BEEP), nullptr, m + S(590), y - S(3), S(200), S(22), SWP_NOZORDER);
+    SetWindowPos(H(D_HIDEJUNK), nullptr, m + S(590), y - S(3), S(260), S(22), SWP_NOZORDER);
     y += S(22);
     SetWindowPos(H(D_LOG), nullptr, m, y, W - 2 * m, std::max(S(40), Hh - y - m), SWP_NOZORDER);
     // the list's columns share the width
@@ -211,7 +213,8 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             mk("BUTTON", "Compare with an older scan...", BS_PUSHBUTTON | WS_TABSTOP, 0, D_COMPARE);
             mk("STATIC", "Watch retunes the radio for a minute each time, so it suits leaving the program running.", 0, 0, D_WATCHL);
             mk("BUTTON", "Auto-listen saves a sound clip", BS_AUTOCHECKBOX | WS_TABSTOP, 0, D_CLIPS);
-            mk("BUTTON", "Beep on a new signal", BS_AUTOCHECKBOX | WS_TABSTOP, 0, D_BEEP);
+            mk("BUTTON", "Hide likely interference and noise", BS_AUTOCHECKBOX | WS_TABSTOP, 0, D_HIDEJUNK);
+            SendMessageA(H(D_HIDEJUNK), BM_SETCHECK, BST_CHECKED, 0);
             mk("EDIT", "", WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, WS_EX_CLIENTEDGE, D_LOG);
             layout(); markSortColumn(); applyButtons(); showDetail();
             return 0;
@@ -255,7 +258,7 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 G.host.setWatch(k >= 0 && k < 4 ? mins[k] : 0);
             }
             else if (id == D_CLIPS && G.host.recordClips) G.host.recordClips(checked(D_CLIPS));
-            else if (id == D_BEEP && G.host.beepOnNew) G.host.beepOnNew(checked(D_BEEP));
+            else if (id == D_HIDEJUNK) { rebuildRows(); fill(); }
             else if (id == D_ONLYNEW || id == D_NOWIDE) { rebuildRows(); fill(); }
             else if (id == D_NOTESAVE && i >= 0 && i < (int)G.rows.size() && G.host.setNote) {
                 char b[200] = {0}; GetWindowTextA(H(D_NOTE), b, sizeof b);
@@ -315,7 +318,9 @@ void discoverUpdate(const std::vector<DiscoveryRow>& rows, const std::string& st
     rebuildRows();
     const bool changed = before.size() != G.rows.size() || [&] { for (size_t i = 0; i < before.size(); ++i) if (before[i].hz != G.rows[i].hz || before[i].seen != G.rows[i].seen || before[i].activeNow != G.rows[i].activeNow || before[i].note != G.rows[i].note || before[i].isNew != G.rows[i].isNew) return true; return false; }();
     if (changed) fill();
-    SetWindowTextA(H(D_STATUS), status.c_str());
+    std::string st = status;
+    if (G.hidden) st += "  (" + std::to_string(G.hidden) + " line(s) hidden as likely interference or noise; untick the box below to see them.)";
+    SetWindowTextA(H(D_STATUS), st.c_str());
     static std::string lastLog;
     if (log != lastLog) {
         lastLog = log;

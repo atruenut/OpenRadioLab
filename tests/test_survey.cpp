@@ -145,6 +145,42 @@ int main() {
         CHECK(ch.size() == 3 && gone == 1 && app == 1 && weak == 1 && strong == 0, "changes: %zu gone %d new %d weaker %d", ch.size(), gone, app, weak);
         CHECK(o.changesSince(o).empty(), "identical scans differ");
     }
+    std::printf("[Interference filter]\n");
+    {
+        DiscoveryTable t;
+        auto mk = [](double hz, double w, double snr) { FoundSignal f; f.hz = hz; f.widthHz = w; f.snrDb = snr; f.levelDb = -50; return f; };
+        std::vector<FoundSignal> pass = {
+            mk(432.009e6, 1e3, 44),                                            // 30 x 14.4 MHz (+ crystal error)
+            mk(423.433e6, 1e3, 16), mk(423.561e6, 1e3, 16), mk(423.689e6, 1e3, 16), mk(423.817e6, 1e3, 16), mk(423.945e6, 1e3, 16),   // comb
+            mk(446.4e6 + 1.0e6, 1e3, 25),                                      // lone steady narrow line
+            mk(146.52e6, 12e3, 28),                                            // a voice-width signal
+            mk(1.0e6, 9e3, 30), mk(1.009e6, 9e3, 28),                          // two AM stations 9 kHz apart
+            mk(162.55e6, 10e3, 35),
+        };
+        for (int p = 0; p < 3; ++p) { t.addSignals(pass); t.endPass(); }
+        FoundSignal blip = mk(300.123e6, 1e3, 10); t.addSignals({blip}); t.endPass();   // one weak blip in one sweep of four
+        int junk = 0, good = 0; bool voiceOk = false, wxOk = false, amOk = false, blipJunk = false, xtalJunk = false, combJunk = true, lineJunk = false;
+        for (auto& r : t.rows()) {
+            junk += r.junk; good += !r.junk;
+            if (std::fabs(r.hz - 146.52e6) < 1) voiceOk = !r.junk;
+            if (std::fabs(r.hz - 162.55e6) < 1) wxOk = !r.junk;
+            if (r.hz < 2e6) amOk = !r.junk;
+            if (std::fabs(r.hz - 300.123e6) < 1) blipJunk = r.junk;
+            if (std::fabs(r.hz - 432.009e6) < 1) xtalJunk = r.junk && r.junkWhy.find("14.4") != std::string::npos;
+            if (r.hz > 423e6 && r.hz < 424e6) combJunk = combJunk && r.junk;
+            if (std::fabs(r.hz - 447.4e6) < 1) lineJunk = r.junk;
+        }
+        CHECK(voiceOk && wxOk && amOk, "real signals were hidden");
+        CHECK(blipJunk, "weak blip not flagged"); CHECK(xtalJunk, "crystal harmonic not flagged"); CHECK(combJunk, "comb not flagged"); CHECK(lineJunk, "steady line not flagged");
+        CHECK(t.rows().front().junk == false, "junk ranks above real signals");
+        auto hf = surveyRanges(true, 100e3, 1766e6); bool am = false; for (auto& r : hf) if (r.lo < 1e6) am = true;
+        CHECK(am, "no AM band in the quick plan for an HF-capable receiver");
+        auto nohf = surveyRanges(true, 24e6, 1766e6); for (auto& r : nohf) CHECK(r.lo >= 24e6, "range below the receiver's limit");
+        // two close AM stations survive peak-finding when the minimum separation is small
+        std::vector<float> db(4096, -70.f); const double bin = 1e3;
+        for (int i = -3; i <= 3; ++i) { db[1000 + i] = -40.f + (float)(-std::abs(i) * 4); db[1009 + i] = -42.f + (float)(-std::abs(i) * 4); }
+        CHECK(findSignals(db, 1e6, bin, 9.0, 8e3).size() == 2, "AM pair merged at 8 kHz separation");
+    }
     std::printf("%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL SURVEY TESTS PASSED", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
 }

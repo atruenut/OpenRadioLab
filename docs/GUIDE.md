@@ -261,7 +261,7 @@ Two tick boxes narrow the list: *Only new since last scan* and *Hide wide blocks
 New sweeps *add to* what is already there instead of starting over, so the list becomes a picture of your location over time. Each signal remembers when it was first and last seen.
 *Save scan...* and *Open scan...* keep named scans (for example one per place or per day); *Export to CSV...* writes a spreadsheet file; *Clear list* empties the list and the automatic save.
 
-**What is new?** After a scan has been loaded, any signal that was not in it is marked **NEW** in the Seen column and written to the log ("NEW signal: 462.675 MHz..."). Tick *Beep on a new signal* to be told while you do something else; leave a quick sweep running and come back later.
+**What is new?** After a scan has been loaded, any signal that was not in it is marked **NEW** in the Seen column and written to the log ("NEW signal: 462.675 MHz..."). Leave a quick sweep running and come back later to see what turned up.
 Because ratios like 3/10 now cover many sweeps, old history counts for less than new sweeps (at most the last 20 passes' worth are kept).
 
 **Notes.** Select a signal, type in *Your note* (for example "Ferry dispatch?") and press *Save note*. Notes are saved with the scan and shown in the list and the CSV file.
@@ -275,7 +275,18 @@ Because ratios like 3/10 now cover many sweeps, old history counts for less than
 **When is it on the air?** Every sweep notes the hour of the day. Select a signal and the detail box adds a line such as *Usually present around 18:00-22:59* and a 24-character bar (one character per hour: `#` usually there, `+` sometimes, `-` not heard, `.` not checked yet).
 It needs sweeps in at least three different hours before it says anything. Run a quick sweep in the morning, evening and at night, or use Watch, and it fills in. The history is saved with the scan.
 
-**Watch.** Choose *Watch: sweep every 10 / 30 minutes / hour* and the program runs one quick sweep on that schedule while the Discover window is open, then returns the radio to what you were listening to. New signals go in the log (and beep if you ticked that). It retunes the radio during each sweep, so it suits leaving the program running while you do something else.
+**Watch.** Choose *Watch: sweep every 10 / 30 minutes / hour* and the program runs one quick sweep on that schedule while the Discover window is open, then returns the radio to what you were listening to. New signals go in the log. It retunes the radio during each sweep, so it suits leaving the program running while you do something else.
 
 **Compare with an older scan.** Open Discover with a current list, press *Compare with an older scan...* and choose a saved file. A report lists what is new, gone, 6 dB or more stronger, and 6 dB or more weaker. Use it to compare two places, two antennas, or the same place on two days.
 "Gone" can simply mean a signal was off the air or too weak that time.
+
+## Interference filter and HF sweeps (0.18.0)
+
+**Hide likely interference and noise** (ticked by default in Discover). A desktop computer next to a small antenna fills a scan with false lines. The program now recognises four kinds and hides them (a note in the status line says how many; untick the box to see them, and select one to read the reason):
+- lines on exact multiples of 14.4 MHz: the receiver's own crystal leaking harmonics;
+- a row of evenly spaced narrow lines (for example every 128 kHz): electrical interference;
+- one-bin-wide lines that are there in every sweep: the computer or the receiver itself, since a real station is modulated and wider;
+- weak one-bin blips that come and go: noise.
+This is a judgement from the shape of the signal, not a proof, so the box can be unticked. Auto-listen skips them.
+
+**Shortwave and AM sweeps.** If your receiver can tune below 30 MHz (the RTL-SDR Blog V4 can, directly), the Quick sweep now starts with the AM broadcast band, the main shortwave broadcast bands, the amateur 80, 40 and 20 m bands, CHU (the Canadian time signal at 3.33, 7.85 and 14.67 MHz) and CB. These bands are the best use of a very small antenna: strong stations at night come through with only a paper clip, whereas the VHF/UHF bands need a proper antenna of the right length.

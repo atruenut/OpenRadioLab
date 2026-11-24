@@ -47,7 +47,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.17.0";
+const char* kAppName = "OpenRadio Lab 0.18.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -814,7 +814,7 @@ struct DiscoverState {
     ULONGLONG t0 = 0, holdStart = 0, quietSince = 0, minHold = 0;
     double mn = 1e9, mx = -1e9;
     std::vector<DiscoveryRow> cand; std::map<long, double> base;
-    bool recClips = false, clipOn = false, beepNew = false; std::set<long> told;
+    bool recClips = false, clipOn = false; std::set<long> told;
     int watchMin = 0; ULONGLONG lastEnd = 0; bool onePass = false;
 } D;
 
@@ -866,7 +866,6 @@ void announceNew() {
         char b[160]; std::snprintf(b, sizeof b, "NEW signal: %s (%s, %.0f dB above the noise)", formatFrequency(r.hz).c_str(), r.where.c_str(), r.snrDb);
         logActivity(b); ++n;
     }
-    if (n && D.beepNew) MessageBeep(MB_OK);
 }
 
 void stopClip() {
@@ -894,7 +893,7 @@ void autoTick() {
     const ULONGLONG now = GetTickCount64();
     if (D.aidx >= D.cand.size()) {                       // (re)build the list: voice-width channels first
         D.cand.clear(); D.aidx = 0;
-        for (auto& r : D.table.rows()) if (r.widthHz < 120e3 && (r.mode == 1 || r.mode == 2) && D.cand.size() < 30) D.cand.push_back(r);
+        for (auto& r : D.table.rows()) if (!r.junk && r.widthHz < 120e3 && (r.mode == 1 || r.mode == 2) && D.cand.size() < 30) D.cand.push_back(r);
         if (D.cand.empty()) { setAutoListen(false); D.status = "Nothing voice-sized was found to listen to."; discoverPush(); return; }
     }
     const DiscoveryRow& r = D.cand[D.aidx];
@@ -1000,7 +999,7 @@ void surveyFeed(const std::vector<SpectrumFrame>& fr) {
     if (advanced) A.scanProgressMs = now;
     if (A.scan.done()) {
         const ScanReport rep = A.scan.result();
-        D.table.addSignals(findSignals(rep.spectrumDb, rep.spectrumLoHz, rep.spectrumBinHz));
+        D.table.addSignals(findSignals(rep.spectrumDb, rep.spectrumLoHz, rep.spectrumBinHz, 9.0, D.list[std::min(D.idx, D.list.size() - 1)].hi < 30e6 ? 8e3 : 12e3));
         if (++D.idx >= D.list.size()) {
             D.table.endPass(); announceNew(); autosaveDiscovery(); D.idx = 0; ++D.pass;
             if (D.onePass) { D.onePass = false; stopSurvey("Watch sweep finished: " + std::to_string(D.table.rows().size()) + " signal(s) in the list. The next one starts on schedule."); return; }
@@ -1056,7 +1055,7 @@ std::string pickFile(bool save, const char* filter, const char* ext, const char*
 
 void openDiscover() {
     static bool triedLoad = false;
-    if (!discoverOpen()) { D.recClips = false; D.beepNew = false; D.watchMin = 0; }   // the window's tick boxes start cleared
+    if (!discoverOpen()) { D.recClips = false; D.watchMin = 0; }   // the window's tick boxes start cleared
     if (!triedLoad) {                                            // bring back the signals found last time
         triedLoad = true;
         if (D.table.size() == 0 && D.table.load(discoveryPath()))
@@ -1126,7 +1125,6 @@ void openDiscover() {
         showTextReport(A.hwnd, A.hi, A.font, "OpenRadio Lab - what changed between scans", t);
     };
     h.recordClips = [](bool on) { D.recClips = on; };
-    h.beepOnNew = [](bool on) { D.beepNew = on; };
     h.setNote = [](double hz, const std::string& note) {
         if (D.table.setNote(hz, note)) { autosaveDiscovery(); D.status = "Note saved."; } else D.status = "That signal is no longer in the list.";
         discoverPush();

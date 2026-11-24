@@ -24,8 +24,16 @@ std::vector<SurveyRange> surveyRanges(bool quick, double minHz, double maxHz) {
         {406e6, 413e6, "Emergency beacons / public safety"}, {420e6, 450e6, "70 cm amateur and ISM"}, {450e6, 470e6, "UHF business and family radio"},
         {902e6, 928e6, "915 MHz ISM"}, {1085e6, 1095e6, "Aircraft transponders"},
     };
+    // Shortwave and medium wave, for receivers that can tune there (the RTL-SDR Blog V4 can). These need little antenna at night.
+    static const SurveyRange hf[] = {
+        {0.53e6, 1.71e6, "AM broadcast (medium wave)"}, {3.2e6, 3.4e6, "Time signals and 90 m"}, {3.5e6, 4.0e6, "80 m amateur"},
+        {5.9e6, 6.2e6, "49 m shortwave broadcast"}, {7.0e6, 7.5e6, "40 m amateur and 41 m broadcast"}, {7.8e6, 7.9e6, "CHU time signal"},
+        {9.4e6, 9.9e6, "31 m shortwave broadcast"}, {11.6e6, 12.1e6, "25 m shortwave broadcast"}, {14.0e6, 14.35e6, "20 m amateur"},
+        {14.6e6, 14.7e6, "CHU time signal"}, {15.1e6, 15.8e6, "19 m shortwave broadcast"}, {26.9e6, 27.5e6, "CB radio"},
+    };
     std::vector<SurveyRange> out;
     if (quick) {
+        for (const auto& r : hf) if (r.lo >= minHz && r.hi <= maxHz) out.push_back(r);
         for (const auto& r : q) if (r.lo >= minHz && r.hi <= maxHz) out.push_back(r);
     } else {
         // Everything tunable, in 30 MHz blocks, skipping the FM broadcast band (the FM scanner covers it).
@@ -45,7 +53,7 @@ namespace {
 double percentile(std::vector<float> v, double p) { std::sort(v.begin(), v.end()); return v.empty() ? 0.0 : v[(size_t)(p * (v.size() - 1))]; }
 }
 
-std::vector<FoundSignal> findSignals(const std::vector<float>& db, double lo, double binHz, double margin) {
+std::vector<FoundSignal> findSignals(const std::vector<float>& db, double lo, double binHz, double margin, double minSepHz) {
     std::vector<FoundSignal> out;
     const long n = (long)db.size();
     if (n < 400 || binHz <= 0) return out;
@@ -74,7 +82,7 @@ std::vector<FoundSignal> findSignals(const std::vector<float>& db, double lo, do
             FoundSignal fsig; fsig.hz = lo + (i + j) / 2.0 * binHz; fsig.widthHz = width; fsig.levelDb = s / (j - i + 1); fsig.snrDb = fsig.levelDb - f;
             out.push_back(fsig);
         } else {                                              // narrow signals: local maxima at least ~12 kHz apart
-            const long sep = std::max<long>(2, (long)(12e3 / binHz));
+            const long sep = std::max<long>(2, (long)(minSepHz / binHz));
             std::vector<long> peaks;
             for (long k = i; k <= j; ++k) {
                 bool top = true;
@@ -133,6 +141,39 @@ void describeSignal(DiscoveryRow& r) {
     r.what += " (a possibility from its frequency and width, not an identification)";
 }
 
+// Spot the lines that are almost certainly not stations: the receiver's own crystal harmonics, regular combs of lines,
+// narrow lines that sit there in every sweep, and weak one-bin blips that come and go (noise).
+void markInterference(std::vector<DiscoveryRow>& rows) {
+    auto narrow = [](const DiscoveryRow& r) { return r.widthHz <= 3000.0; };
+    for (auto& r : rows) {
+        if (!narrow(r) || r.hz < 100e6) continue;
+        const double k = std::floor(r.hz / 14.4e6 + 0.5);
+        if (k >= 7) {
+            const double h = k * 14.4e6, ppm = (r.hz - h) / h * 1e6;
+            if (std::fabs(ppm) <= 60.0) { r.junk = true; r.junkWhy = "it sits on a multiple of 14.4 MHz (" + std::to_string((int)k) + " x 14.4), which is where the receiver's own crystal leaks harmonics"; }
+        }
+    }
+    std::vector<DiscoveryRow*> n;
+    for (auto& r : rows) if (narrow(r)) n.push_back(&r);
+    std::sort(n.begin(), n.end(), [](const DiscoveryRow* a, const DiscoveryRow* b) { return a->hz < b->hz; });
+    for (size_t i = 0; i + 3 < n.size();) {
+        const double gap = n[i + 1]->hz - n[i]->hz;
+        size_t j = i;
+        if (gap >= 5e3 && gap <= 2e6) while (j + 1 < n.size() && std::fabs((n[j + 1]->hz - n[j]->hz) - gap) <= 1.5e3) ++j;
+        if (j - i >= 3) {
+            char b[160]; std::snprintf(b, sizeof b, "it is one of a row of narrow lines spaced %.0f kHz apart, which is typical of electrical interference, not a station", gap / 1e3);
+            for (size_t k = i; k <= j; ++k) if (!n[k]->junk) { n[k]->junk = true; n[k]->junkWhy = b; }
+            i = j + 1;
+        } else ++i;
+    }
+    for (auto& r : rows) {
+        if (r.junk || !narrow(r)) continue;
+        if (r.passes >= 2 && r.seen * 4 >= r.passes * 3 && r.snrDb < 60.0) { r.junk = true; r.junkWhy = "it is a one-bin-wide line that was there in nearly every sweep, which is typical of the computer or the receiver itself (a real station has a modulated, wider signal)"; }
+        else if (r.snrDb < 14.0 && r.seen * 4 < r.passes * 3) { r.junk = true; r.junkWhy = "it is a weak one-bin blip that came and went between sweeps, which is probably noise"; }
+    }
+    for (auto& r : rows) if (r.junk) r.what = "Probably not a station: " + r.junkWhy + ". (" + r.what + ")";
+}
+
 std::vector<DiscoveryRow> DiscoveryTable::rows() const {
     std::vector<DiscoveryRow> out;
     for (const auto& e : e_) {
@@ -145,6 +186,8 @@ std::vector<DiscoveryRow> DiscoveryTable::rows() const {
         r.score = r.snrDb + 4.0 * std::min(e.seen, 5) + (r.known ? 8.0 : 0.0) + (r.widthHz < 120e3 ? 4.0 : -4.0) + (r.activeNow ? 3.0 : 0.0);
         out.push_back(r);
     }
+    markInterference(out);
+    for (auto& r : out) if (r.junk) r.score -= 40.0;
     std::sort(out.begin(), out.end(), [](const DiscoveryRow& a, const DiscoveryRow& b) { return a.score > b.score; });
     return out;
 }

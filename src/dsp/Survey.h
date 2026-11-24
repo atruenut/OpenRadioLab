@@ -19,7 +19,7 @@ std::vector<SurveyRange> surveyRanges(bool quick, double minHz, double maxHz);
 struct FoundSignal { double hz = 0, levelDb = 0, snrDb = 0, widthHz = 0; };
 
 // db: stitched spectrum, bin i at loHz + i*binHz. Wide blocks (TV, cellular, ...) come out as one signal with a large width.
-std::vector<FoundSignal> findSignals(const std::vector<float>& db, double loHz, double binHz, double marginDb = 9.0);
+std::vector<FoundSignal> findSignals(const std::vector<float>& db, double loHz, double binHz, double marginDb = 9.0, double minSepHz = 12e3);
 
 struct DiscoveryRow {
     double hz = 0, snrDb = 0, widthHz = 0;
@@ -33,6 +33,8 @@ struct DiscoveryRow {
     long long firstT = 0, lastT = 0;   // when it was first / last seen (seconds since 1970)
     bool isNew = false;                // first seen in this session, when an earlier saved scan exists to compare with
     std::string note;                  // the user's own label
+    bool junk = false;                 // very probably the receiver, the computer or plain noise rather than a station
+    std::string junkWhy;               // plain-language reason
     int hourSeen[24] = {0};            // sweeps (by local hour of day) in which it was present
     int hourPasses[24] = {0};          // sweeps made in each local hour, for all signals
 };

@@ -31,7 +31,6 @@ struct DiscoverHost {
     std::function<void(bool on)> recordClips;              // auto-listen saves a sound clip of each activity
     std::function<void(int minutes)> setWatch;             // 0 = off; otherwise sweep once every N minutes while this window is open
     std::function<void()> compareScan;                     // pick an older scan file and report what changed
-    std::function<void(bool on)> beepOnNew;                // a short beep when a sweep finds a signal not in the loaded scan
 };
 
 bool registerDiscoverClass(HINSTANCE hi);
