@@ -60,6 +60,7 @@ void DspPipeline::run() {
             }
             const size_t n = blk.size() / 2;
             sp_.pushSamples(blk.data(), n);
+            if (tapOn_) { Lock l(tapm_); if (tap_) tap_(blk.data(), n); }
             if (audioOn_) {
                 audio_.clear();
                 dm_.process(blk.data(), n, audio_);

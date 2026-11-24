@@ -238,3 +238,16 @@ Everything it heard is written in the activity log at the bottom of the window w
 
 Notes: a dongle makes a few false signals of its own (spikes that always appear at the same spot), so a signal that sounds like nothing may be one. Strong FM or television stations can overload the receiver and create ghosts;
 in Advanced mode lower the gain if the list fills with strong rubbish. Calls that sound like private conversations (phones, walkie-talkies) are not for recording or sharing.
+
+## Aircraft tracker: ADS-B on 1090 MHz (0.15.0)
+
+Tools, then *Aircraft tracker*. Aircraft broadcast short digital reports on 1090 MHz: who they are (flight number or registration), their height, speed, heading, climb rate and GPS position. This window listens for them, lists each aircraft and plots those with a position on a simple radar-style picture (north up, a small tick shows the heading).
+
+**Start tracking** tunes the receiver to 1090 MHz at 2.048 MS/s and sets a fixed high gain (about 40 dB), because these reports are very short bursts and automatic gain does not suit them. Sound is switched off while tracking. **Stop tracking** puts your frequency, rate and gain back; so does retuning or closing the window.
+Enter your own latitude and longitude (decimal degrees, west negative; 47.5 and -64.9 is the right idea for Tracadie) to get distances; they are saved in the settings file. Without them the plot is centred on the middle of the aircraft.
+
+What to expect: a short vertical antenna about 7 cm long (a quarter wave at 1090 MHz) with a view of the sky does far better than the telescopic whip left at FM length. Near a window you may hear a few aircraft; outside with a good antenna, dozens at 100 km or more.
+A new aircraft first shows only its address; the callsign, height and speed arrive within seconds, and a position needs two different reports (even and odd), so it can take 10 to 30 seconds.
+Damaged messages are detected with the built-in 24-bit check and ignored, so what is shown is what the aircraft reported. It is an observation, not a verification: the list shows what each aircraft says about itself.
+
+Limits: the decoder reads the standard extended squitter (DF17) messages only; it does not do the older interrogation replies. It is tested against published real message examples and against synthetic over-the-air signals, but has not yet been tried on a real antenna. The simulator has no aircraft, so tracking needs the RTL-SDR.

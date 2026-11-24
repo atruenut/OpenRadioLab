@@ -33,6 +33,8 @@
 #include "ui/AtlasWindow.h"
 #include "ui/AntennaWindow.h"
 #include "ui/MorseWindow.h"
+#include "ui/AdsbWindow.h"
+#include "dsp/AdsbDecoder.h"
 #include "ui/DiscoverWindow.h"
 #include "dsp/Survey.h"
 #include "ui/LabWindows.h"
@@ -43,7 +45,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.14.0";
+const char* kAppName = "OpenRadio Lab 0.15.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -54,7 +56,7 @@ enum {
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATION, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL, ID_M_DISCOVER,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL, ID_M_DISCOVER, ID_M_ADSB,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -159,6 +161,7 @@ void fillPresets();
 void openJournal(bool);
 void stopSurvey(const std::string& why);
 bool surveyRunning();
+void stopAdsb(bool restore);
 void updatePlaybackBar(bool force = false);
 IqFileDevice* player();
 
@@ -531,6 +534,7 @@ void stopDevice() {
         A.proc.setLinesPerSecond(A.scanSavedLps);
         A.dm.setMute(A.cfg.mute);
     }
+    stopAdsb(false);
     if (A.dev) { A.dev->stop(); A.dev->close(); A.dev.reset(); }
 }
 
@@ -765,6 +769,7 @@ void finishScan(bool aborted, const std::string& why) {
 void startScan() {
     if (!A.dev) return;
     if (surveyRunning()) { stopSurvey("Sweep stopped."); return; }
+    stopAdsb(true);
     if (A.scanning) { finishScan(true, "cancelled."); return; }
     if (A.dev->isPlayback()) { A.scanText = "A recording covers one slice of the band and cannot be scanned. Choose the live receiver."; updateInfo(); return; }
     stopRecording();
@@ -917,6 +922,7 @@ void stopSurvey(const std::string& why) {
 void startSurvey(bool quick) {
     if (!A.dev) return;
     if (D.sweeping) return;
+    stopAdsb(true);
     if (A.scanning) finishScan(true, "cancelled.");
     if (A.dev->isPlayback()) { D.status = "A recording covers one slice of the band and cannot be swept. Choose the live receiver."; discoverPush(); return; }
     setAutoListen(false);
@@ -993,6 +999,72 @@ void openDiscover() {
     h.addToJournal = [] { openJournal(true); };
     showDiscover(A.hwnd, A.hi, A.font, h);
     discoverPush();
+}
+
+// ------------------------------------------------------------------ Aircraft tracker (ADS-B, 1090 MHz)
+
+struct AdsbState {
+    AdsbDecoder dec;
+    bool on = false;
+    double savedFreq = 0, savedVfo = 0; uint32_t savedRate = 0; bool savedAuto = true;
+} AD;
+
+
+// restore = put the tuning, gain and sound back as they were before tracking began.
+void stopAdsb(bool restore) {
+    if (!AD.on) return;
+    AD.on = false;
+    A.pipe.setIqTap(nullptr);
+    A.pipe.setAudioEnabled(true);
+    if (restore && A.dev) {
+        A.cfg.freqHz = AD.savedFreq; A.cfg.vfoHz = AD.savedVfo; A.cfg.rate = AD.savedRate; A.cfg.autoGain = AD.savedAuto;
+        applyTuning();
+        applyGain();
+    }
+}
+
+bool startAdsb(std::string& why) {
+    if (!A.dev) { why = "No receiver is running."; return false; }
+    if (A.dev->isPlayback()) { why = "A recording cannot be retuned. Choose the live receiver to track aircraft."; return false; }
+    if (A.caps.minFreqHz > 1090e6 || A.caps.maxFreqHz < 1090e6) { why = "This receiver cannot tune to 1090 MHz."; return false; }
+    if (A.dev->isSimulated()) { why = "The simulator does not transmit aircraft reports, so there is nothing to track. Plug in the RTL-SDR and choose it as the receiver."; return false; }
+    if (D.sweeping) stopSurvey("Sweep stopped for the aircraft tracker.");
+    if (A.scanning) finishScan(true, "cancelled.");
+    setAutoListen(false);
+    stopRecording();
+    AD.savedFreq = A.cfg.freqHz; AD.savedVfo = A.cfg.vfoHz; AD.savedRate = A.cfg.rate; AD.savedAuto = A.cfg.autoGain;
+    A.cfg.freqHz = A.cfg.vfoHz = 1090e6;
+    A.cfg.rate = 2048000;
+    applyTuning();
+    A.dev->setGainDb(40.0);                         // aircraft signals are short bursts; automatic gain does not suit them
+    AD.dec.setRate((double)A.cfg.rate);
+    AD.dec.reset();
+    A.pipe.setAudioEnabled(false);
+    A.pipe.setIqTap([](const float* iq, size_t n) { AD.dec.process(iq, n); });
+    AD.on = true;
+    return true;
+}
+
+void openAdsb() {
+    AdsbHost h;
+    h.start = [](std::string& why) { return startAdsb(why); };
+    h.stop = [] { stopAdsb(true); };
+    h.running = [] { return AD.on; };
+    h.aircraft = [] { return AD.dec.aircraft(120.0); };
+    h.stats = [] { return AD.dec.stats(); };
+    h.clock = [] { return AD.dec.clock(); };
+    h.note = [] { return std::string(); };
+    h.saveHome = [](bool has, double la, double lo) {
+        const std::string p = settingsPath(); char b[32];
+        WritePrivateProfileStringA("adsb", "home", has ? "1" : "0", p.c_str());
+        std::snprintf(b, sizeof b, "%.5f", la); WritePrivateProfileStringA("adsb", "lat", b, p.c_str());
+        std::snprintf(b, sizeof b, "%.5f", lo); WritePrivateProfileStringA("adsb", "lon", b, p.c_str());
+    };
+    const std::string p = settingsPath(); char b[48];
+    h.hasHome = GetPrivateProfileIntA("adsb", "home", 0, p.c_str()) != 0;
+    GetPrivateProfileStringA("adsb", "lat", "0", b, sizeof b, p.c_str()); h.homeLat = std::atof(b);
+    GetPrivateProfileStringA("adsb", "lon", "0", b, sizeof b, p.c_str()); h.homeLon = std::atof(b);
+    showAdsbWindow(A.hwnd, A.hi, A.font, h);
 }
 
 // Called with every batch of spectrum frames while a scan runs.
@@ -1288,6 +1360,7 @@ void onTimer() {
     A.view.addFrames(fr);
     updateSpecAvg(fr);
     morseSetCwMode(A.cfg.mode == 5);
+    if (AD.on && (std::fabs(A.cfg.freqHz - 1090e6) > 1.0 || !A.dev || !A.dev->isRunning())) stopAdsb(false);   // the user retuned: stop tracking, keep their tuning
     if (D.autoOn && !D.sweeping && A.dev && A.dev->isRunning() && !A.dev->isPlayback()) autoTick();
     if (discoverOpen()) { static ULONGLONG lastD = 0; const ULONGLONG t = GetTickCount64(); if (t - lastD >= 500) { lastD = t; discoverPush(); } }
     {   // station data changes slowly; refresh its card about once a second, and re-lay-out when the card appears or goes
@@ -1699,6 +1772,7 @@ void onCommand(int id, int code) {
         case ID_M_LAB: openSignalLab(); break;
         case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
         case ID_M_DISCOVER: openDiscover(); break;
+        case ID_M_ADSB: openAdsb(); break;
         case ID_M_FAVADD: addFavourite(); break;
         case ID_M_FAVDEL: removeFavourite(); break;
         case ID_M_MORSE: showMorseWindow(A.hwnd, A.hi, A.font); break;
@@ -1856,6 +1930,8 @@ LRESULT CALLBACK mainProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_DESTROY:
             KillTimer(h, TIMER_UI);
             stopAudioCapture(false);
+            closeAdsbWindow();
+            stopAdsb(true);
             saveSettings();
             stopDevice();          // device first, so nothing is still feeding the DSP thread
             A.pipe.stop();
@@ -1879,6 +1955,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     registerAntennaClass(hi);
     registerMorseClass(hi);
     registerDiscoverClass(hi);
+    registerAdsbClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1914,6 +1991,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(tools, MF_STRING, ID_M_NEWENTRY, "Add what I'm listening to into the journal");
     AppendMenuA(tools, MF_STRING, ID_M_LAB, "Signal Lab: watch a signal over time...");
     AppendMenuA(tools, MF_STRING, ID_M_ATLAS, "Frequency Atlas: what is where...");
+    AppendMenuA(tools, MF_STRING, ID_M_ADSB, "Aircraft tracker (ADS-B, 1090 MHz)...");
     AppendMenuA(tools, MF_STRING, ID_M_MORSE, "Morse Decoder (CW text)...");
     AppendMenuA(tools, MF_STRING, ID_M_ANTENNA, "Antenna Workshop: lengths and build guides...");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);

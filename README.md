@@ -23,6 +23,7 @@ Licence: **GPL-2.0-only** (see [LICENSE](LICENSE)).
 | **Simulator** | A fictional radio world with stations, bursts, a DC spike and ADC clipping, so everything works with no hardware. Always labelled **SIMULATED**. |
 | **Recording and playback** | Save the whole captured band to a `.orliq` file; replay it later with play/pause/seek/repeat, or share it with someone who has no dongle. |
 | **Discover** | Sweeps the whole tunable range (quick sweep of popular services, or a full sweep), lists every signal found with strength, width and persistence, suggests how to listen, and can auto-listen: hop between active channels and stop where something is being said. |
+| **Aircraft tracker** | Decodes ADS-B on 1090 MHz: lists nearby aircraft with flight, height, speed, heading and position, and plots them on a simple radar view. |
 | **Morse and RDS** | Morse text decoder for CW; station name, song text and programme type from FM RDS/RBDS. |
 | **Frequency Atlas** | Well-known bands in plain language, each with its information source and a button to jump to an example. A curated summary, not the official ISED table. |
 | **Save audio** | Save what you hear as a standard WAV file. |

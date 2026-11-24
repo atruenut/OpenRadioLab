@@ -28,6 +28,10 @@ public:
 
     void setAudioSink(AudioSink s) { sink_ = std::move(s); }     // call before start()
     void setAudioEnabled(bool on) { audioOn_ = on; }
+    // Optional raw-IQ tap, called on the DSP thread for every block (used by the aircraft tracker).
+    // Pass an empty function to remove it. Safe to call from the UI thread.
+    using IqTap = std::function<void(const float* iq, size_t numComplex)>;
+    void setIqTap(IqTap t) { Lock l(tapm_); tap_ = std::move(t); tapOn_ = (bool)tap_; }
     void start();
     void stop();
 
@@ -43,6 +47,9 @@ private:
     Demodulator& dm_;
     AudioSink sink_;
     Mutex qm_;
+    Mutex tapm_;
+    IqTap tap_;
+    std::atomic<bool> tapOn_{false};
     std::deque<std::vector<float>> q_;
     std::vector<std::vector<float>> pool_;
     Event ev_;
