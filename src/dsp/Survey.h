@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OpenRadio Lab - Copyright (C) 2026 The OpenRadio Lab authors.
+// This program is free software; you can redistribute it and/or modify it under the terms of the
+// GNU General Public License version 2 as published by the Free Software Foundation. See LICENSE.
+
+// Discovery: find signals anywhere in a swept spectrum, remember them across passes, and describe them.
+#pragma once
+
+#include <string>
+#include <vector>
+
+namespace orl {
+
+struct SurveyRange { double lo, hi; const char* name; };
+// quick = the popular services (aircraft, marine, public service, amateur, ISM...); otherwise everything the dongle can tune.
+std::vector<SurveyRange> surveyRanges(bool quick, double minHz, double maxHz);
+
+struct FoundSignal { double hz = 0, levelDb = 0, snrDb = 0, widthHz = 0; };
+
+// db: stitched spectrum, bin i at loHz + i*binHz. Wide blocks (TV, cellular, ...) come out as one signal with a large width.
+std::vector<FoundSignal> findSignals(const std::vector<float>& db, double loHz, double binHz, double marginDb = 9.0);
+
+struct DiscoveryRow {
+    double hz = 0, snrDb = 0, widthHz = 0;
+    int seen = 0, passes = 0;       // seen in this many of this many passes
+    bool activeNow = false;         // present in the most recent pass
+    int mode = 1;                   // suggested way to listen: 0 WFM 1 NFM 2 AM 3 USB 4 LSB 5 CW
+    bool known = false;             // inside a band the atlas describes
+    std::string where;              // "Marine VHF" or similar
+    std::string what;               // plain-language observation (never an identification)
+    double score = 0;
+};
+
+class DiscoveryTable {
+public:
+    void clear() { e_.clear(); passes_ = 0; }
+    void addSignals(const std::vector<FoundSignal>& s);   // from one swept range during the current pass
+    void endPass() { ++passes_; }
+    int passes() const { return passes_; }
+    std::vector<DiscoveryRow> rows() const;               // best first
+
+private:
+    struct E { double hz = 0, width = 0, maxSnr = 0, lastSnr = 0; int seen = 0, lastPass = -1; };
+    std::vector<E> e_;
+    int passes_ = 0;
+};
+
+// Describe a signal from where it is and how wide it is.
+void describeSignal(DiscoveryRow& r);
+
+} // namespace orl

@@ -33,6 +33,8 @@
 #include "ui/AtlasWindow.h"
 #include "ui/AntennaWindow.h"
 #include "ui/MorseWindow.h"
+#include "ui/DiscoverWindow.h"
+#include "dsp/Survey.h"
 #include "ui/LabWindows.h"
 #include "ui/LearnWindow.h"
 #include "ui/SpectrumView.h"
@@ -41,7 +43,7 @@ using namespace orl;
 
 namespace {
 
-const char* kAppName = "OpenRadio Lab 0.13.0";
+const char* kAppName = "OpenRadio Lab 0.14.0";
 const char* kMainClass = "ORLMainWindow";
 const char* kReportClass = "ORLReportWindow";
 
@@ -52,7 +54,7 @@ enum {
     ID_RATE, ID_FFT, ID_WINDOW, ID_AUDIODEV,
     ID_AUTOGAIN, ID_GAIN, ID_SMOOTH, ID_RANGE,
     ID_VIEW, ID_INFO, ID_STATION, ID_STATUS,
-    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL,
+    ID_M_LIVE = 700, ID_M_JOURNAL, ID_M_NEWENTRY, ID_M_LAB, ID_M_EXIT, ID_M_ATLAS, ID_M_WAV, ID_M_ANTENNA, ID_M_MORSE, ID_M_FAVADD, ID_M_FAVDEL, ID_M_DISCOVER,
     ID_L_DEVICE = 300, ID_L_FREQ, ID_L_STEP, ID_L_LISTEN, ID_L_VOL, ID_L_BW, ID_L_BWV, ID_L_SQL, ID_L_SQLV,
     ID_L_RATE, ID_L_FFT, ID_L_WINDOW, ID_L_AUDIO, ID_L_GAIN, ID_L_GAINV, ID_L_SMOOTH, ID_L_RANGE,
 };
@@ -153,6 +155,10 @@ std::string fmt1(double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); 
 void stopRecording(bool ask = false);
 void stopAudioCapture(bool ask = false);
 void layout();
+void fillPresets();
+void openJournal(bool);
+void stopSurvey(const std::string& why);
+bool surveyRunning();
 void updatePlaybackBar(bool force = false);
 IqFileDevice* player();
 
@@ -758,6 +764,7 @@ void finishScan(bool aborted, const std::string& why) {
 
 void startScan() {
     if (!A.dev) return;
+    if (surveyRunning()) { stopSurvey("Sweep stopped."); return; }
     if (A.scanning) { finishScan(true, "cancelled."); return; }
     if (A.dev->isPlayback()) { A.scanText = "A recording covers one slice of the band and cannot be scanned. Choose the live receiver."; updateInfo(); return; }
     stopRecording();
@@ -783,8 +790,214 @@ void startScan() {
     updateInfo();
 }
 
+// ------------------------------------------------------------------ Discover: sweep, list, auto-listen
+
+struct DiscoverState {
+    bool sweeping = false, quick = true;
+    std::vector<SurveyRange> list; size_t idx = 0; int pass = 0;
+    DiscoveryTable table;
+    std::string status = "Press Quick sweep to look for signals around you. It checks the popular services and repeats until you press Stop.";
+    std::string log;
+    double savedCentre = 0, savedVfo = 0; int savedMode = 0;
+    // auto-listen
+    bool autoOn = false; int ast = 0; size_t aidx = 0;
+    ULONGLONG t0 = 0, holdStart = 0, quietSince = 0, minHold = 0;
+    double mn = 1e9, mx = -1e9;
+    std::vector<DiscoveryRow> cand; std::map<long, double> base;
+} D;
+
+bool surveyRunning() { return D.sweeping; }
+void discoverPush() { discoverUpdate(D.table.rows(), D.status, D.sweeping, D.autoOn, D.log); }
+
+void logActivity(const std::string& s) {
+    SYSTEMTIME st; GetLocalTime(&st);
+    char b[32]; std::snprintf(b, sizeof b, "%02d:%02d:%02d  ", st.wHour, st.wMinute, st.wSecond);
+    D.log += b + s + "\r\n";
+    if (D.log.size() > 6000) D.log.erase(0, D.log.size() - 6000);
+}
+
+void setAutoListen(bool on) {
+    if (on == D.autoOn) return;
+    if (on) {
+        if (!A.dev || A.dev->isPlayback()) { D.status = "Auto-listen needs the live receiver."; discoverPush(); return; }
+        if (D.table.rows().empty()) { D.status = "Run a sweep first so there is something to listen to."; discoverPush(); return; }
+        if (D.sweeping) { D.status = "Stop the sweep first, then turn on Auto-listen."; discoverPush(); return; }
+        D.autoOn = true; D.ast = 0; D.aidx = 0; D.cand.clear();
+        A.dm.setMute(true);
+        D.status = "Auto-listen is hopping between the channels found. It stops where it hears activity.";
+        logActivity("Auto-listen started.");
+    } else {
+        D.autoOn = false;
+        A.dm.setMute(A.cfg.mute);
+        D.status = "Auto-listen stopped.";
+        logActivity("Auto-listen stopped.");
+    }
+    discoverPush();
+}
+
+void autoTick() {
+    const ULONGLONG now = GetTickCount64();
+    if (D.aidx >= D.cand.size()) {                       // (re)build the list: voice-width channels first
+        D.cand.clear(); D.aidx = 0;
+        for (auto& r : D.table.rows()) if (r.widthHz < 120e3 && (r.mode == 1 || r.mode == 2) && D.cand.size() < 30) D.cand.push_back(r);
+        if (D.cand.empty()) { setAutoListen(false); D.status = "Nothing voice-sized was found to listen to."; discoverPush(); return; }
+    }
+    const DiscoveryRow& r = D.cand[D.aidx];
+    const long key = std::lround(r.hz / 1000.0);
+    switch (D.ast) {
+        case 0:
+            if (A.cfg.mode != r.mode) setModeIndex(r.mode, false);
+            listenTo(r.hz);
+            D.t0 = now; D.ast = 1;
+            { char b[160]; std::snprintf(b, sizeof b, "Auto-listen: checking %s (%s)...", formatFrequency(r.hz).c_str(), r.where.c_str()); D.status = b; }
+            break;
+        case 1:
+            if (now - D.t0 >= 350) { D.t0 = now; D.mn = 1e9; D.mx = -1e9; D.ast = 2; }
+            break;
+        case 2: {
+            const double lvl = A.dm.levelDb();
+            D.mn = std::min(D.mn, lvl); D.mx = std::max(D.mx, lvl);
+            if (now - D.t0 < 700) break;
+            const bool first = !D.base.count(key);
+            double b = first ? D.mn : std::min(D.base[key], D.mn);
+            D.base[key] = b + 0.05;                      // the quiet level creeps up slowly so a changed environment is re-learned
+            const bool jump = (D.mx - b > 6.0) || (D.mx - D.mn > 8.0);
+            const bool steady = first && r.snrDb >= 15.0 && r.activeNow;   // a strong steady signal on the first visit
+            if (jump || steady) {
+                D.ast = 3; D.holdStart = now; D.quietSince = 0; D.minHold = steady && !jump ? 10000 : 4000;
+                A.dm.setMute(A.cfg.mute);
+                logActivity("Activity on " + formatFrequency(r.hz) + " (" + r.where + ")" + (steady && !jump ? " - a steady signal" : ""));
+                D.status = "Auto-listen: listening to " + formatFrequency(r.hz) + ". It moves on when the channel goes quiet.";
+            } else { ++D.aidx; D.ast = 0; }
+            break;
+        }
+        case 3: {
+            const double lvl = A.dm.levelDb();
+            const double b = D.base.count(key) ? D.base[key] : lvl;
+            if (lvl > b + 3.0) D.quietSince = 0; else if (!D.quietSince) D.quietSince = now;
+            const bool quiet = D.quietSince && now - D.quietSince > 3000 && now - D.holdStart >= D.minHold;
+            if (quiet || now - D.holdStart > 90000) {
+                char bb[96]; std::snprintf(bb, sizeof bb, "  ...ended after about %d s", (int)((now - D.holdStart) / 1000));
+                D.log += std::string(bb) + "\r\n";
+                A.dm.setMute(true);
+                ++D.aidx; D.ast = 0;
+            }
+            break;
+        }
+    }
+}
+
+void surveyBeginRange() {
+    const SurveyRange& r = D.list[D.idx];
+    BandScanner::Plan p;
+    p.lo = r.lo; p.hi = r.hi; p.rate = (double)A.cfg.rate; p.fftSize = kFftSizes[A.cfg.fftIdx];
+    p.chCount = 0; p.settleFrames = 10; p.collectFrames = 6;
+    A.scan.begin(p);
+    A.cfg.freqHz = A.scan.centre();
+    A.dev->setCenterFrequency((uint32_t)std::llround(A.scan.centre()));
+    A.proc.setTuning(A.scan.centre(), (double)A.cfg.rate);
+    A.pipe.flush();
+    A.view.clearHistory();
+    A.scanProgressMs = GetTickCount64();
+}
+
+void stopSurvey(const std::string& why) {
+    if (!D.sweeping) return;
+    D.sweeping = false; A.scanning = false;
+    A.proc.setLinesPerSecond(A.scanSavedLps);
+    A.dm.setMute(A.cfg.mute);
+    A.cfg.freqHz = A.scanSavedCentre; A.cfg.vfoHz = A.scanSavedVfo;
+    applyTuning();
+    setText(ID_FREQ, formatFrequency(A.cfg.vfoHz));
+    D.status = why;
+    discoverPush();
+    updateInfo();
+}
+
+void startSurvey(bool quick) {
+    if (!A.dev) return;
+    if (D.sweeping) return;
+    if (A.scanning) finishScan(true, "cancelled.");
+    if (A.dev->isPlayback()) { D.status = "A recording covers one slice of the band and cannot be swept. Choose the live receiver."; discoverPush(); return; }
+    setAutoListen(false);
+    stopRecording();
+    D.list = surveyRanges(quick, (double)A.caps.minFreqHz, (double)A.caps.maxFreqHz);
+    if (D.list.empty()) { D.status = "This receiver cannot tune the bands the sweep covers."; discoverPush(); return; }
+    D.quick = quick; D.idx = 0; D.pass = 0;
+    D.table.clear(); D.base.clear();
+    A.scanSavedCentre = A.cfg.freqHz; A.scanSavedVfo = A.cfg.vfoHz; A.scanSavedLps = 30;
+    D.sweeping = true; A.scanning = true;
+    A.dm.setMute(true);
+    A.proc.setLinesPerSecond(60);
+    surveyBeginRange();
+    D.status = quick ? "Quick sweep started..." : "Full sweep started: this takes several minutes.";
+    discoverPush();
+}
+
+void surveyFeed(const std::vector<SpectrumFrame>& fr) {
+    bool advanced = false;
+    for (auto& f : fr) if (A.scan.addFrame(f)) { advanced = true; break; }
+    const ULONGLONG now = GetTickCount64();
+    if (advanced) A.scanProgressMs = now;
+    if (A.scan.done()) {
+        const ScanReport rep = A.scan.result();
+        D.table.addSignals(findSignals(rep.spectrumDb, rep.spectrumLoHz, rep.spectrumBinHz));
+        if (++D.idx >= D.list.size()) {
+            D.table.endPass(); D.idx = 0; ++D.pass;
+            if (!D.quick) { stopSurvey("Full sweep finished: " + std::to_string(D.table.rows().size()) + " signal(s) found. Double-click one to listen."); return; }
+        }
+        surveyBeginRange();
+        discoverPush();
+    } else if (advanced) {
+        A.cfg.freqHz = A.scan.centre();
+        A.dev->setCenterFrequency((uint32_t)std::llround(A.scan.centre()));
+        A.proc.setTuning(A.scan.centre(), (double)A.cfg.rate);
+        A.pipe.flush();
+    } else if (now - A.scanProgressMs > 4000) {
+        stopSurvey("The receiver stopped delivering data.");
+        return;
+    }
+    char b[200];
+    const SurveyRange& r = D.list[std::min(D.idx, D.list.size() - 1)];
+    std::snprintf(b, sizeof b, "Sweeping %s to %s (%s). Sweep %d, range %zu of %zu. %zu signal(s) so far.", formatFrequency(r.lo).c_str(), formatFrequency(r.hi).c_str(),
+                  r.name, D.pass + 1, D.idx + 1, D.list.size(), D.table.rows().size());
+    D.status = b;
+}
+
+void discoverListen(const DiscoveryRow& r) {
+    setAutoListen(false);
+    if (D.sweeping) stopSurvey("Stopped to listen.");
+    tuneTo(r.hz);
+    if (A.cfg.mode != r.mode) setModeIndex(r.mode, false);
+    D.status = "Listening to " + formatFrequency(r.hz) + ". The main window shows it.";
+    discoverPush();
+}
+
+void discoverFavourite(const DiscoveryRow& r) {
+    for (auto& f : g_favs) if (std::fabs(f.hz - r.hz) < 5e3) { D.status = "That frequency is already a favourite."; discoverPush(); return; }
+    if (g_favs.size() >= kMaxFavs) { D.status = "The favourites list is full (40)."; discoverPush(); return; }
+    Fav f; f.hz = r.hz; f.mode = r.mode; f.name = formatFrequency(r.hz) + " " + r.where;
+    for (char& c : f.name) if (c == '|' || (unsigned char)c < 32) c = ' ';
+    g_favs.push_back(f); fillPresets();
+    D.status = "Saved " + formatFrequency(r.hz) + " as a favourite. It is in the Quick jump list in the main window.";
+    discoverPush();
+}
+
+void openDiscover() {
+    DiscoverHost h;
+    h.start = [](bool q) { startSurvey(q); };
+    h.stop = [] { stopSurvey("Sweep stopped. The signals found are listed below."); };
+    h.listen = [](const DiscoveryRow& r) { discoverListen(r); };
+    h.favourite = [](const DiscoveryRow& r) { discoverFavourite(r); };
+    h.autoListen = [](bool on) { setAutoListen(on); };
+    h.addToJournal = [] { openJournal(true); };
+    showDiscover(A.hwnd, A.hi, A.font, h);
+    discoverPush();
+}
+
 // Called with every batch of spectrum frames while a scan runs.
 void scanFeed(const std::vector<SpectrumFrame>& fr) {
+    if (D.sweeping) { surveyFeed(fr); return; }
     bool advanced = false;
     for (auto& f : fr) if (A.scan.addFrame(f)) { advanced = true; break; }
     const ULONGLONG now = GetTickCount64();
@@ -1075,6 +1288,8 @@ void onTimer() {
     A.view.addFrames(fr);
     updateSpecAvg(fr);
     morseSetCwMode(A.cfg.mode == 5);
+    if (D.autoOn && !D.sweeping && A.dev && A.dev->isRunning() && !A.dev->isPlayback()) autoTick();
+    if (discoverOpen()) { static ULONGLONG lastD = 0; const ULONGLONG t = GetTickCount64(); if (t - lastD >= 500) { lastD = t; discoverPush(); } }
     {   // station data changes slowly; refresh its card about once a second, and re-lay-out when the card appears or goes
         static ULONGLONG lastRdsMs = 0; static bool shown = false;
         const ULONGLONG nowMs = GetTickCount64();
@@ -1100,6 +1315,8 @@ void onTimer() {
     updateStatus();
 
     if (A.dev && !A.dev->isRunning()) {
+        if (D.sweeping) { D.sweeping = false; D.status = "The device stopped delivering data."; }
+        if (D.autoOn) { D.autoOn = false; }
         if (A.scanning) { A.scanning = false; setText(ID_SCAN, "Scan FM"); A.proc.setLinesPerSecond(A.scanSavedLps); A.dm.setMute(A.cfg.mute); }
         A.notice = "The device stopped delivering data (unplugged?). Switched to the simulated SDR.";
         stopDevice();
@@ -1481,6 +1698,7 @@ void onCommand(int id, int code) {
         case ID_M_NEWENTRY: openJournal(true); break;
         case ID_M_LAB: openSignalLab(); break;
         case ID_M_ATLAS: showAtlasWindow(A.hwnd, A.hi, A.font); break;
+        case ID_M_DISCOVER: openDiscover(); break;
         case ID_M_FAVADD: addFavourite(); break;
         case ID_M_FAVDEL: removeFavourite(); break;
         case ID_M_MORSE: showMorseWindow(A.hwnd, A.hi, A.font); break;
@@ -1660,6 +1878,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     registerAtlasClass(hi);
     registerAntennaClass(hi);
     registerMorseClass(hi);
+    registerDiscoverClass(hi);
     loadSettings();
 
     WNDCLASSA wc{};
@@ -1686,6 +1905,8 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int show) {
     AppendMenuA(file, MF_STRING, ID_M_LIVE, "Back to live radio");
     AppendMenuA(file, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(file, MF_STRING, ID_M_EXIT, "Exit");
+    AppendMenuA(tools, MF_STRING, ID_M_DISCOVER, "Discover: find what is on the air around me...");
+    AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(tools, MF_STRING, ID_M_FAVADD, "Save this station as a favourite");
     AppendMenuA(tools, MF_STRING, ID_M_FAVDEL, "Remove this station from favourites");
     AppendMenuA(tools, MF_SEPARATOR, 0, nullptr);

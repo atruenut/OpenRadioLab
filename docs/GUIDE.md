@@ -221,3 +221,20 @@ The decoder is tested against synthetic RDS signals (through the whole receiver 
 
 **Favourites.** Tools, then *Save this station as a favourite* stores the frequency and mode under the station's own name if it sent one (otherwise the frequency).
 Favourites appear at the bottom of the *Quick jump to* list marked with a star. To delete one, tune to it and choose *Remove this station from favourites*. Up to 40 are kept in the settings file.
+
+## Discover: what is on the air around you (0.14.0)
+
+Tools, then *Discover*. This looks for signals across the whole range your dongle can tune, not only FM.
+
+**Quick sweep** hops through the popular services (aircraft navigation and voice, weather satellites, 2 m and 70 cm amateur, public service, marine and weather, business and family radio,
+the 915 MHz band, aircraft transponders) and repeats until you press Stop. It takes about half a minute per pass. **Full sweep** covers everything from 25 MHz up, once; allow several minutes.
+
+Every signal found goes in a list with its strength above the noise, how many sweeps it showed up in (so steady transmitters rise to the top and one-off bursts are marked), its width,
+the band it is in and a suggested way to listen. Select a row to read what it might be, or double-click to tune there. *Save as favourite* adds it to the Quick jump list.
+Descriptions come only from the frequency and the width of the signal: they are possibilities, not identifications.
+
+**Auto-listen** (after a sweep) hops between the voice-sized channels it found, pausing about a second on each. When a channel's level jumps, it stops and unmutes so you hear it, and moves on three seconds after it goes quiet.
+Everything it heard is written in the activity log at the bottom of the window with the time. A steady strong signal (for example a recorded weather or airport information broadcast) also counts as activity.
+
+Notes: a dongle makes a few false signals of its own (spikes that always appear at the same spot), so a signal that sounds like nothing may be one. Strong FM or television stations can overload the receiver and create ghosts;
+in Advanced mode lower the gain if the list fills with strong rubbish. Calls that sound like private conversations (phones, walkie-talkies) are not for recording or sharing.

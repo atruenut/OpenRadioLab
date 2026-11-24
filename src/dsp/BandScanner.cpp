@@ -85,6 +85,8 @@ ScanReport BandScanner::result() const {
                 db[k] = db[prev] + (db[i] - db[prev]) * (double)(k - prev) / (double)(i - prev);
         prev = (long)i;
     }
+    r.spectrumLoHz = plan_.lo; r.spectrumBinHz = binHz_;
+    r.spectrumDb.assign(db.begin(), db.end());
     std::vector<double> lin(n);
     for (size_t i = 0; i < n; ++i) lin[i] = std::pow(10.0, db[i] / 10.0);
 
@@ -106,7 +108,7 @@ ScanReport BandScanner::result() const {
 
     std::vector<double> sorted = ch;
     std::sort(sorted.begin(), sorted.end());
-    r.floorDb = sorted[sorted.size() / 5];          // 20th percentile: an empty channel, even in a crowded band
+    r.floorDb = sorted.empty() ? 0.0 : sorted[sorted.size() / 5];          // 20th percentile: an empty channel, even in a crowded band
 
     double best = -1e9;
     for (int k = 0; k < plan_.chCount; ++k) {

@@ -30,7 +30,7 @@ build/app_res.o: resources/app.rc resources/app.manifest
 	cd resources && $(WINDRES) app.rc -O coff -o ../build/app_res.o
 
 CORE_SRC = src/dsp/FFT.cpp src/dsp/BandScanner.cpp src/dsp/Filters.cpp src/dsp/Demodulator.cpp src/dsp/DspPipeline.cpp \
-           src/dsp/SpectrumProcessor.cpp src/sdr/SimulatedSDR.cpp src/io/IqFile.cpp src/io/WavWriter.cpp src/dsp/RdsDecoder.cpp
+           src/dsp/SpectrumProcessor.cpp src/sdr/SimulatedSDR.cpp src/io/IqFile.cpp src/io/WavWriter.cpp src/dsp/RdsDecoder.cpp src/dsp/Survey.cpp
 test:
 	@mkdir -p build
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_core tests/test_core.cpp $(CORE_SRC) -lpthread
@@ -44,10 +44,11 @@ test:
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_hints tests/test_hints.cpp
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_morse tests/test_morse.cpp src/dsp/MorseDecoder.cpp
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_antenna tests/test_antenna.cpp src/learn/Antenna.cpp
+	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_survey tests/test_survey.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_rds tests/test_rds.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_ssb tests/test_ssb.cpp $(CORE_SRC) -lpthread
 	g++ -std=gnu++17 -O2 -Wall -Wextra -o build/test_compare tests/test_compare.cpp src/dsp/SpectrumCompare.cpp
-	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab && ./build/test_wav && ./build/test_ssb && ./build/test_compare && ./build/test_antenna && ./build/test_morse && ./build/test_rds
+	./build/test_core && ./build/test_demod && ./build/test_scanner && ./build/test_content && ./build/test_stereo && ./build/test_hints && ./build/test_iq && ./build/test_lab && ./build/test_wav && ./build/test_ssb && ./build/test_compare && ./build/test_antenna && ./build/test_morse && ./build/test_rds && ./build/test_survey
 
 clean:
 	rm -rf build OpenRadioLab.exe

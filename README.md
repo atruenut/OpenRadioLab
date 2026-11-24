@@ -22,6 +22,8 @@ Licence: **GPL-2.0-only** (see [LICENSE](LICENSE)).
 | **Automatic hardware detection** | Scans USB, diagnoses a missing driver in plain language, loads `rtlsdr.dll` at run time, and falls back to a labelled simulator when nothing is plugged in. |
 | **Simulator** | A fictional radio world with stations, bursts, a DC spike and ADC clipping, so everything works with no hardware. Always labelled **SIMULATED**. |
 | **Recording and playback** | Save the whole captured band to a `.orliq` file; replay it later with play/pause/seek/repeat, or share it with someone who has no dongle. |
+| **Discover** | Sweeps the whole tunable range (quick sweep of popular services, or a full sweep), lists every signal found with strength, width and persistence, suggests how to listen, and can auto-listen: hop between active channels and stop where something is being said. |
+| **Morse and RDS** | Morse text decoder for CW; station name, song text and programme type from FM RDS/RBDS. |
 | **Frequency Atlas** | Well-known bands in plain language, each with its information source and a button to jump to an example. A curated summary, not the official ISED table. |
 | **Save audio** | Save what you hear as a standard WAV file. |
 | **Learning Center** | Ten short lessons for total beginners (antennas, gain, reading the waterfall, modes, responsible listening in Canada) plus an A-Z radio dictionary. |

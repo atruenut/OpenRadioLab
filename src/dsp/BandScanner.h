@@ -28,6 +28,9 @@ struct ScanReport {
     double peakHz = 0;
     double strongestSnrDb = 0;           // best channel's margin over the floor (even if below threshold)
     int channelsChecked = 0;
+    // The stitched spectrum of the whole sweep (gaps filled), for finding signals that are not on a fixed raster.
+    std::vector<float> spectrumDb;
+    double spectrumLoHz = 0, spectrumBinHz = 0;
 };
 
 class BandScanner {
